@@ -407,28 +407,125 @@ app.post('/api/scan', auth, async (req, res) => {
 });
 
 
+// Shared helper: identify + price + image for one card
+async function identifyCard(name, number, variant, grade, mediaType, imageBase64) {
+  let tcgCards = [];
+  const numClean = (number||'').replace(/^0+/, '');
+  // TCG lookup
+  if (numClean) {
+    const q1 = `name:${name} number:${numClean}`;
+    const r1 = await fetch(`https://api.pokemontcg.io/v2/cards?q=${encodeURIComponent(q1)}&pageSize=20`);
+    if (r1.ok) tcgCards = (await r1.json())?.data || [];
+  }
+  if (!tcgCards.length && number && number !== numClean) {
+    const q1b = `name:${name} number:${number}`;
+    const r1b = await fetch(`https://api.pokemontcg.io/v2/cards?q=${encodeURIComponent(q1b)}&pageSize=20`);
+    if (r1b.ok) tcgCards = (await r1b.json())?.data || [];
+  }
+  if (!tcgCards.length) {
+    const q2 = `name:${name}`;
+    const r2 = await fetch(`https://api.pokemontcg.io/v2/cards?q=${encodeURIComponent(q2)}&pageSize=20`);
+    if (r2.ok) tcgCards = (await r2.json())?.data || [];
+  }
+
+  let verifiedSet = null;
+  let image = null;
+  const isIllustration = variant && /illustration|special/i.test(variant);
+
+  if (tcgCards.length === 1) {
+    verifiedSet = tcgCards[0].set?.name || null;
+    image = tcgCards[0].images?.large || tcgCards[0].images?.small || null;
+  } else if (tcgCards.length > 1) {
+    const candidates = tcgCards.slice(0, 5).map(c => ({
+      id: c.id, setName: c.set?.name, rarity: c.rarity,
+      imageUrl: c.images?.small || c.images?.large,
+      releaseDate: c.set?.releaseDate
+    })).filter(c => c.imageUrl);
+
+    const candidateImgs = await Promise.all(candidates.map(async c => {
+      try {
+        const cr = await fetch(c.imageUrl);
+        if (!cr.ok) return null;
+        const arrayBuf = await cr.arrayBuffer();
+        return { ...c, b64: Buffer.from(arrayBuf).toString('base64') };
+      } catch { return null; }
+    }));
+    const valid = candidateImgs.filter(Boolean);
+
+    if (valid.length > 0 && imageBase64) {
+      try {
+        const matchContent = [
+          { type: 'text', text: `Pokemon card: "${name}" number ${number}, variant "${variant||'unknown'}". Which candidate matches visually? Respond ONLY with JSON: {"bestMatchId":"id","confidence":"high/medium/low"}` },
+          { type: 'image', source: { type: 'base64', media_type: mediaType||'image/jpeg', data: imageBase64 } },
+          ...valid.flatMap((c, i) => [
+            { type: 'text', text: `Candidate ${i+1} id:${c.id} set:${c.setName} rarity:${c.rarity}:` },
+            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: c.b64 } }
+          ])
+        ];
+        const mr = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+          body: JSON.stringify({ model: 'claude-opus-4-5', max_tokens: 100, messages: [{ role: 'user', content: matchContent }] })
+        });
+        const md = await mr.json();
+        const mp = JSON.parse((md.content?.[0]?.text||'{}').replace(/```json|```/g,'').trim());
+        const best = (mp.bestMatchId && valid.find(c => c.id === mp.bestMatchId))
+          || (isIllustration ? valid.find(c => c.rarity && /special illustration/i.test(c.rarity)) || valid.find(c => c.rarity && /illustration rare/i.test(c.rarity)) : null)
+          || valid.sort((a,b) => new Date(b.releaseDate||0) - new Date(a.releaseDate||0))[0];
+        const bestFull = tcgCards.find(c => c.id === best.id);
+        verifiedSet = best.setName;
+        image = bestFull?.images?.large || best.imageUrl;
+      } catch (e) {
+        const fallback = (isIllustration ? tcgCards.find(c => c.rarity && /illustration|special/i.test(c.rarity)) : null)
+          || tcgCards.sort((a,b) => new Date(b.set?.releaseDate||0) - new Date(a.set?.releaseDate||0))[0];
+        verifiedSet = fallback?.set?.name || null;
+        image = fallback?.images?.large || fallback?.images?.small || null;
+      }
+    } else {
+      const fallback = (isIllustration ? tcgCards.find(c => c.rarity && /illustration|special/i.test(c.rarity)) : null)
+        || tcgCards.sort((a,b) => new Date(b.set?.releaseDate||0) - new Date(a.set?.releaseDate||0))[0];
+      verifiedSet = fallback?.set?.name || null;
+      image = fallback?.images?.large || fallback?.images?.small || null;
+    }
+  }
+
+  // Market price with fallback chain
+  const ebayNumber = numClean || null;
+  let marketPrice = await getMarketPrice([name, ebayNumber, verifiedSet, grade].filter(Boolean).join(' '));
+  if (!marketPrice && ebayNumber) marketPrice = await getMarketPrice([name, ebayNumber, grade].filter(Boolean).join(' '));
+  if (!marketPrice) marketPrice = await getMarketPrice([name, grade].filter(Boolean).join(' '));
+
+  const variantLabel = variant && variant !== 'Standard' ? ` ${variant}` : '';
+  const fullName = [`${name}${variantLabel}`.trim(), grade].filter(Boolean).join(' ');
+  return { name: fullName, grade, image, marketPrice, verifiedSet };
+}
+
 app.post('/api/scan-lot', auth, async (req, res) => {
   const { imageBase64, mediaType } = req.body;
   if (!imageBase64 || !ANTHROPIC_API_KEY) return res.status(400).json({ error: 'Missing image or API key' });
   try {
+    // Step 1: identify all cards in the photo
     const r = await fetch('https://api.anthropic.com/v1/messages', {
-      method:'POST',
-      headers:{'Content-Type':'application/json','x-api-key':ANTHROPIC_API_KEY,'anthropic-version':'2023-06-01'},
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({
-        model:'claude-opus-4-5', max_tokens:1000,
-        messages:[{role:'user',content:[
-          {type:'image',source:{type:'base64',media_type:mediaType||'image/jpeg',data:imageBase64}},
-          {type:'text',text:'Identify all Pokemon cards visible. Respond ONLY with JSON array: [{"name":"card name","grade":"grade or null","condition":"NM/LP/MP/HP or null"}]. Return [] if none.'}
+        model: 'claude-opus-4-5', max_tokens: 1500,
+        messages: [{ role: 'user', content: [
+          { type: 'image', source: { type: 'base64', media_type: mediaType||'image/jpeg', data: imageBase64 } },
+          { type: 'text', text: 'Identify every Pokemon card visible. For each card read: name, card number, art style (Illustration Rare/Special Illustration Rare/Full Art/Rainbow Rare/Alt Art/Standard), and grade if slabbed. Respond ONLY with JSON array: [{"name":"Pokemon name","number":"card number e.g. 093","variant":"art style","grade":"PSA 10 or null","condition":"NM/LP/MP/HP or null"}]. Return [] if no Pokemon cards visible.' }
         ]}]
       })
     });
     const data = await r.json();
     const parsed = JSON.parse((data.content?.[0]?.text||'[]').replace(/```json|```/g,'').trim());
-    const results = await Promise.all(parsed.map(async card => {
-      const fullName = [card.name, card.grade].filter(Boolean).join(' ');
-      const [marketPrice, image] = await Promise.all([getMarketPrice(fullName), getPokemonImage(card.name)]);
-      return { name:fullName, grade:card.grade, condition:card.condition, marketPrice, image };
-    }));
+    console.log('[LOT] Identified', parsed.length, 'cards');
+
+    // Step 2: for each card, run the same identification logic as single scan
+    const results = await Promise.all(parsed.map(card =>
+      identifyCard(card.name, card.number, card.variant, card.grade, mediaType, imageBase64)
+        .catch(e => ({ name: card.name, grade: card.grade, image: null, marketPrice: null }))
+    ));
+
     res.json({ cards: results });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

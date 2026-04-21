@@ -763,7 +763,8 @@ async function completeSale() {
   if (isNaN(sale) || sale <= 0) { alert('Please enter a sale price.'); return; }
   const updated = await apiPatch('/api/cards/' + sellId + '/sell', { salePrice: sale });
   const idx = cards.indexOf(c);
-  cards[idx] = updated;
+  // Preserve image from local card if server response doesn't include it
+  cards[idx] = { ...updated, image: updated.image || c.image };
   closeSell();
   renderOverview();
 }
