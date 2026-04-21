@@ -152,16 +152,27 @@ app.delete('/api/cards/:id', auth, async (req, res) => {
 });
 
 const priceCache = new Map();
+function ebaySearchQuery(cardName) {
+  return cardName
+    .replace(/\b(PSA|BGS|CGC|SGC)\s*[\d.]+\b/gi, '')
+    .replace(/\b\d{3}\/\d{3}\b/g, '')
+    .replace(/\b(MEP|SVP|SSP|SVI|PAL|OBF|PAR|TWM|SCR|TEF|PRE|JTC|SFA)\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 60);
+}
+
 async function getMarketPrice(cardName) {
   const key = cardName.toLowerCase();
   const cached = priceCache.get(key);
   if (cached && Date.now() - cached.ts < 7200000) return cached.price;
   try {
     if (!EBAY_CLIENT_ID) return null;
+    const query = ebaySearchQuery(cardName);
     const params = new URLSearchParams({
       'OPERATION-NAME':'findCompletedItems','SERVICE-VERSION':'1.0.3',
       'SECURITY-APPNAME':EBAY_CLIENT_ID,'RESPONSE-DATA-FORMAT':'JSON',
-      'keywords':`pokemon ${cardName}`,'categoryId':'183454',
+      'keywords':`pokemon ${query}`,'categoryId':'183454',
       'itemFilter(0).name':'SoldItemsOnly','itemFilter(0).value':'true',
       'itemFilter(1).name':'Currency','itemFilter(1).value':'USD',
       'sortOrder':'EndTimeSoonest','paginationInput.entriesPerPage':'50'
@@ -184,15 +195,29 @@ async function getMarketPrice(cardName) {
 }
 
 const imgCache = new Map();
-async function getPokemonImage(cardName) {
-  const key = cardName.toLowerCase();
+async function getPokemonImage(cardName, cardNumber, setCode) {
+  const key = (cardName + (cardNumber||'') + (setCode||'')).toLowerCase();
   if (imgCache.has(key)) return imgCache.get(key);
   try {
-    const cleaned = cardName.replace(/\b(PSA|BGS|CGC|SGC)\s*[\d.]+\b/gi,'').replace(/[^a-zA-Z\s]/g,' ').trim().split(' ')[0];
-    const r = await fetch(`https://api.pokemontcg.io/v2/cards?q=name:${encodeURIComponent(cleaned)}&pageSize=1`);
-    if (!r.ok) return null;
-    const data = await r.json();
-    const img = data?.data?.[0]?.images?.small || null;
+    let img = null;
+    if (cardNumber && setCode) {
+      const numClean = cardNumber.replace(/\/.*/, '').replace(/^0+/, '');
+      const r = await fetch(`https://api.pokemontcg.io/v2/cards?q=number:${numClean} set.ptcgoCode:${setCode.toLowerCase()}&pageSize=5`);
+      if (r.ok) {
+        const cards = (await r.json())?.data || [];
+        const match = cards.find(c => c.rarity && /illustration|special/i.test(c.rarity)) || cards[0];
+        img = match?.images?.large || match?.images?.small || null;
+      }
+    }
+    if (!img) {
+      const cleaned = cardName.replace(/\b(PSA|BGS|CGC|SGC)\s*[\d.]+\b/gi,'').replace(/[^a-zA-Z\s]/g,' ').trim().split(' ')[0];
+      const r = await fetch(`https://api.pokemontcg.io/v2/cards?q=name:${encodeURIComponent(cleaned)}&pageSize=8`);
+      if (r.ok) {
+        const cards = (await r.json())?.data || [];
+        const match = cards.find(c => c.rarity && /illustration|special/i.test(c.rarity)) || cards[0];
+        img = match?.images?.large || match?.images?.small || null;
+      }
+    }
     imgCache.set(key, img);
     return img;
   } catch { return null; }
@@ -214,15 +239,21 @@ app.post('/api/scan', auth, async (req, res) => {
         model:'claude-opus-4-5', max_tokens:300,
         messages:[{role:'user',content:[
           {type:'image',source:{type:'base64',media_type:mediaType||'image/jpeg',data:imageBase64}},
-          {type:'text',text:'Identify this Pokemon card. Respond ONLY with JSON: {"name":"full card name","grade":"grade if slabbed or null","condition":"NM/LP/MP/HP if raw or null"}. If not a Pokemon card: {"name":null,"grade":null,"condition":null}.'}
+          {type:'text',text:'Identify this Pokemon card carefully. Look at the card name, set symbol, card number, and art style. Respond ONLY with JSON: {"name":"Pokemon name only e.g. Tyrunt","set":"set name e.g. Prismatic Evolutions","number":"card number e.g. 070","setCode":"set code e.g. MEP","variant":"art variant e.g. Illustration Rare, Full Art, Rainbow Rare, Alt Art, or Standard","grade":"PSA/BGS/CGC grade if in slab or null","condition":"NM/LP/MP/HP if raw or null"}. If not a Pokemon card: {"name":null}.'}
         ]}]
       })
     });
     const data = await r.json();
     const parsed = JSON.parse((data.content?.[0]?.text||'{}').replace(/```json|```/g,'').trim());
     if (!parsed.name) return res.json({ detected: false });
-    const fullName = [parsed.name, parsed.grade].filter(Boolean).join(' ');
-    const [marketPrice, image] = await Promise.all([getMarketPrice(fullName), getPokemonImage(parsed.name)]);
+    const variant = parsed.variant ? ` ${parsed.variant}` : '';
+    const displayName = `${parsed.name}${variant}`.trim();
+    const fullName = [displayName, parsed.grade].filter(Boolean).join(' ');
+    const ebayName = [parsed.name, parsed.variant, parsed.grade].filter(Boolean).join(' ');
+    const [marketPrice, image] = await Promise.all([
+      getMarketPrice(ebayName),
+      getPokemonImage(parsed.name, parsed.number, parsed.setCode)
+    ]);
     res.json({ detected:true, name:fullName, grade:parsed.grade, condition:parsed.condition, marketPrice, image });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
