@@ -177,14 +177,38 @@ async function getMarketPrice(cardName) {
       'itemFilter(1).name':'Currency','itemFilter(1).value':'USD',
       'sortOrder':'EndTimeSoonest','paginationInput.entriesPerPage':'50'
     });
+    let items = [];
+    // Try with category filter first
     const r = await fetch(`https://svcs.ebay.com/services/search/FindingService/v1?${params}`);
-    if (!r.ok) { console.log('[EBAY] HTTP error:', r.status); return null; }
-    const data = await r.json();
-    const errMsg = data?.findCompletedItemsResponse?.[0]?.errorMessage?.[0]?.error?.[0]?.message?.[0];
-    if (errMsg) console.log('[EBAY] API error:', errMsg);
-    const totalResults = data?.findCompletedItemsResponse?.[0]?.searchResult?.[0]?.['@count'];
-    console.log('[EBAY] Query:', query, '-> results:', totalResults);
-    const items = data?.findCompletedItemsResponse?.[0]?.searchResult?.[0]?.item || [];
+    if (r.ok) {
+      const data = await r.json();
+      const errMsg = data?.findCompletedItemsResponse?.[0]?.errorMessage?.[0]?.error?.[0]?.message?.[0];
+      if (errMsg) console.log('[EBAY] API error:', errMsg);
+      const totalResults = data?.findCompletedItemsResponse?.[0]?.searchResult?.[0]?.['@count'];
+      console.log('[EBAY] Query:', query, '-> results:', totalResults);
+      items = data?.findCompletedItemsResponse?.[0]?.searchResult?.[0]?.item || [];
+    } else {
+      const errText = await r.text().catch(() => 'unknown');
+      console.log('[EBAY] HTTP error:', r.status, errText.slice(0, 300));
+      // Fallback: try without category restriction
+      const params2 = new URLSearchParams({
+        'OPERATION-NAME':'findCompletedItems','SERVICE-VERSION':'1.0.3',
+        'SECURITY-APPNAME':EBAY_CLIENT_ID,'RESPONSE-DATA-FORMAT':'JSON',
+        'keywords':`pokemon card ${query}`,
+        'itemFilter(0).name':'SoldItemsOnly','itemFilter(0).value':'true',
+        'itemFilter(1).name':'Currency','itemFilter(1).value':'USD',
+        'sortOrder':'EndTimeSoonest','paginationInput.entriesPerPage':'50'
+      });
+      const r2 = await fetch(`https://svcs.ebay.com/services/search/FindingService/v1?${params2}`);
+      if (r2.ok) {
+        const data2 = await r2.json();
+        items = data2?.findCompletedItemsResponse?.[0]?.searchResult?.[0]?.item || [];
+        console.log('[EBAY] Fallback (no category) items:', items.length);
+      } else {
+        console.log('[EBAY] Fallback also failed:', r2.status);
+        return null;
+      }
+    }
     let prices = items.map(i => parseFloat(i.sellingStatus?.[0]?.currentPrice?.[0]?.__value__||0)).filter(p=>p>1);
     console.log('[EBAY] Valid prices found:', prices.length, prices.slice(0,5));
     if (prices.length < 1) return null;
@@ -261,8 +285,9 @@ app.post('/api/scan', auth, async (req, res) => {
     let tcgCards = [];
     try {
       const numRaw = (parsed.number || '').replace(/\/.*/, '').trim();
-      if (numRaw) {
-        const q1 = `name:"${parsed.name}" number:${numRaw}`;
+      const numClean = numRaw.replace(/^0+/, '');
+      if (numClean) {
+        const q1 = `name:"${parsed.name}" number:${numClean}`;
         const r1 = await fetch(`https://api.pokemontcg.io/v2/cards?q=${encodeURIComponent(q1)}&pageSize=20`);
         if (r1.ok) tcgCards = (await r1.json())?.data || [];
         console.log('[SCAN] TCG by number:', q1, '->', tcgCards.length, 'found');
@@ -319,9 +344,13 @@ app.post('/api/scan', auth, async (req, res) => {
           const mt = (md.content?.[0]?.text || '{}').replace(/```json|```/g, '').trim();
           console.log('[SCAN] Visual match result:', mt);
           const mp = JSON.parse(mt);
-          const best = valid.find(c => c.id === mp.bestMatchId) || (isIllustration
-            ? valid.find(c => c.rarity && /illustration|special/i.test(c.rarity)) || valid[0]
-            : valid[0]);
+          console.log('[SCAN] bestMatchId from Claude:', mp.bestMatchId);
+          const best = (mp.bestMatchId && valid.find(c => c.id === mp.bestMatchId))
+            || (isIllustration
+              ? valid.find(c => c.rarity && /special illustration/i.test(c.rarity))
+                || valid.find(c => c.rarity && /illustration rare/i.test(c.rarity))
+                || valid[0]
+              : valid.sort((a,b) => new Date(b.releaseDate||0) - new Date(a.releaseDate||0))[0]);
           const bestFull = tcgCards.find(c => c.id === best.id);
           verifiedSet = best.setName;
           image = bestFull?.images?.large || best.imageUrl;
