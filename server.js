@@ -255,15 +255,21 @@ app.post('/api/scan', auth, async (req, res) => {
     let image = null;
     try {
       const numRaw = (parsed.number||'').replace(/\/.*/, '').trim();
-      const tcgQuery = numRaw
-        ? `name:"${parsed.name}" number:${numRaw}`
-        : `name:"${parsed.name}"`;
-      const tcgRes = await fetch(`https://api.pokemontcg.io/v2/cards?q=${encodeURIComponent(tcgQuery)}&pageSize=20`);
-      if (tcgRes.ok) {
-        const tcgCards = (await tcgRes.json())?.data || [];
-        console.log('[SCAN] TCG candidates:', tcgCards.map(c => c.id + ' ' + c.set?.name + ' ' + c.rarity));
-
-        if (tcgCards.length === 1) {
+      // Try with number first, then name only as fallback
+      let tcgCards = [];
+      if (numRaw) {
+        const q1 = `name:"${parsed.name}" number:${numRaw}`;
+        const r1 = await fetch(`https://api.pokemontcg.io/v2/cards?q=${encodeURIComponent(q1)}&pageSize=20`);
+        if (r1.ok) tcgCards = (await r1.json())?.data || [];
+        console.log('[SCAN] TCG query with number:', q1, '-> found:', tcgCards.length);
+      }
+      if (!tcgCards.length) {
+        const q2 = `name:"${parsed.name}"`;
+        const r2 = await fetch(`https://api.pokemontcg.io/v2/cards?q=${encodeURIComponent(q2)}&pageSize=20`);
+        if (r2.ok) tcgCards = (await r2.json())?.data || [];
+        console.log('[SCAN] TCG fallback query:', q2, '-> found:', tcgCards.length);
+      }
+      if (tcgCards.length === 1) {
           // Only one match — use it directly
           verifiedSet = tcgCards[0].set?.name || null;
           image = tcgCards[0].images?.large || tcgCards[0].images?.small || null;
@@ -283,8 +289,8 @@ app.post('/api/scan', auth, async (req, res) => {
             try {
               const r = await fetch(c.imageUrl);
               if (!r.ok) return null;
-              const buf = await r.buffer();
-              return { ...c, b64: buf.toString('base64') };
+              const arrayBuf = await r.arrayBuffer();
+              return { ...c, b64: Buffer.from(arrayBuf).toString('base64') };
             } catch { return null; }
           }));
           const validCandidates = candidateImgs.filter(Boolean);
