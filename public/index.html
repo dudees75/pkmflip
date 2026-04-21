@@ -412,7 +412,7 @@ body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);min-
     <div class="handle"></div>
     <div class="sheet-title">Mark as Sold</div>
     <div class="sell-sum" id="sell-sum"></div>
-    <div class="field"><label>Sale Price (USD)</label><input type="number" id="in-sale" placeholder="0.00" step="0.01" oninput="updatePrev()"></div>
+    <div class="field"><label id="sale-label">Sale Price (USD)</label><input type="number" id="in-sale" placeholder="0.00" step="0.01" oninput="updatePrev()"></div>
     <div class="pprev" id="pprev">
       <div class="pp-lbl">Profit</div>
       <div class="pp-val" id="pp-val">$0.00</div>
@@ -569,6 +569,7 @@ function cardHTML(c, i, clickable) {
   const imgSrc = c.image || (imgKey ? FALLBACK_IMGS[imgKey] : '');
   const imgTag = imgSrc ? `<img src="${imgSrc}" alt="${c.name}" style="width:100%;height:100%;object-fit:contain;" onerror="this.style.display='none'">` : '🃏';
   const click = clickable && isHeld ? `onclick="openSell('${c.id}')"` : '';
+  const deleteBtn = !isHeld ? `<button onclick="deleteCard('${c.id}')" style="background:none;border:none;color:var(--t3);font-size:16px;cursor:pointer;padding:4px;line-height:1;margin-top:4px;" title="Delete">🗑</button>` : '';
   return `<div class="citem${!clickable || !isHeld ? ' no-click' : ''}" ${click}>
     <div class="cthumb">${imgTag}</div>
     <div class="cinfo">
@@ -576,11 +577,22 @@ function cardHTML(c, i, clickable) {
       <div class="cmeta">${isHeld ? 'Cost: ' + fx(c.cost) : 'Sold ' + new Date(c.soldDate).toLocaleDateString('en-US', { month:'short', day:'numeric' }) + ' · ' + fx(c.cost) + ' → ' + fx(c.salePrice)}</div>
       ${badge}
     </div>
-    <div class="cright">
+    <div class="cright" style="display:flex;flex-direction:column;align-items:flex-end;">
       <div class="cprofit ${isHeld ? 'cp-hld' : pos ? 'cp-pos' : 'cp-neg'}">${profVal}</div>
       <div class="croi" style="color:${pos ? 'var(--green)' : 'var(--red)'}">${pos ? '+' : ''}${roi}% ROI</div>
+      ${deleteBtn}
     </div>
   </div>`;
+}
+
+async function deleteCard(id) {
+  if (!confirm('Delete this card from history?')) return;
+  try {
+    await fetch('/api/cards/' + id, { method: 'DELETE' });
+    cards = cards.filter(c => c.id !== id);
+    renderHistory();
+    renderOverview();
+  } catch { alert('Could not delete card.'); }
 }
 
 // ── CHART ─────────────────────────────────────────────────
@@ -631,20 +643,32 @@ function closeAdd() { document.getElementById('add-ov').classList.remove('open')
 
 function debounceMarketLookup() {
   clearTimeout(marketDebounce);
+  const name = document.getElementById('in-name').value.trim();
+  // Clear image immediately if name is too short
+  if (name.length < 4) {
+    document.getElementById('sc-found').style.display = 'none';
+    document.getElementById('sc-idle').style.display = 'flex';
+    document.getElementById('in-mkt').value = '';
+    return;
+  }
   marketDebounce = setTimeout(async () => {
-    const name = document.getElementById('in-name').value.trim();
-    if (name.length < 4) return;
+    const currentName = document.getElementById('in-name').value.trim();
+    if (currentName.length < 4) return;
     document.getElementById('in-mkt').placeholder = 'fetching...';
     try {
-      const data = await apiGet('/api/market-price?name=' + encodeURIComponent(name));
+      const data = await apiGet('/api/market-price?name=' + encodeURIComponent(currentName));
       if (data.price) document.getElementById('in-mkt').value = data.price.toFixed(2);
+      else document.getElementById('in-mkt').value = '';
       if (data.image) {
         const found = document.getElementById('sc-found');
         document.getElementById('sc-idle').style.display = 'none';
         found.style.display = 'flex';
         document.getElementById('sc-img').src = data.image;
-        document.getElementById('sc-name').textContent = name;
-        document.getElementById('sc-price').textContent = 'Market: ' + fx(data.price);
+        document.getElementById('sc-name').textContent = currentName;
+        document.getElementById('sc-price').textContent = data.price ? 'Market: ' + fx(data.price) : 'No price found';
+      } else {
+        document.getElementById('sc-found').style.display = 'none';
+        document.getElementById('sc-idle').style.display = 'flex';
       }
     } catch {}
     document.getElementById('in-mkt').placeholder = 'auto';
@@ -738,6 +762,7 @@ function openSell(id) {
   const c = cards.find(x => x.id === id);
   if (!c) return;
   document.getElementById('in-sale').value = '';
+  document.getElementById('sale-label').textContent = `Sale Price (${currency})`;
   document.getElementById('sell-sum').innerHTML = `<div class="ss-name">${c.name}</div>
     <div class="ss-row"><span>Buy cost</span><span class="ss-v">${fx(c.cost)}</span></div>
     <div class="ss-row"><span>Market price</span><span class="ss-v">${c.marketPrice ? fx(c.marketPrice) : '—'}</span></div>`;
@@ -749,8 +774,9 @@ function closeSell() { document.getElementById('sell-ov').classList.remove('open
 function updatePrev() {
   const c = cards.find(x => x.id === sellId);
   if (!c) return;
-  const sale = parseFloat(document.getElementById('in-sale').value) || 0;
-  const profit = sale - c.cost;
+  const saleInCurrency = parseFloat(document.getElementById('in-sale').value) || 0;
+  const saleUSD = saleInCurrency / (rates[currency] || 1);
+  const profit = saleUSD - c.cost;
   const el = document.getElementById('pprev');
   el.className = 'pprev' + (profit < 0 ? ' loss' : '');
   document.getElementById('pp-val').textContent = fxS(profit);
@@ -759,11 +785,12 @@ function updatePrev() {
 async function completeSale() {
   const c = cards.find(x => x.id === sellId);
   if (!c) return;
-  const sale = parseFloat(document.getElementById('in-sale').value);
-  if (isNaN(sale) || sale <= 0) { alert('Please enter a sale price.'); return; }
-  const updated = await apiPatch('/api/cards/' + sellId + '/sell', { salePrice: sale });
+  const saleInCurrency = parseFloat(document.getElementById('in-sale').value);
+  if (isNaN(saleInCurrency) || saleInCurrency <= 0) { alert('Please enter a sale price.'); return; }
+  // Always store in USD internally
+  const saleUSD = Math.round((saleInCurrency / (rates[currency] || 1)) * 100) / 100;
+  const updated = await apiPatch('/api/cards/' + sellId + '/sell', { salePrice: saleUSD });
   const idx = cards.indexOf(c);
-  // Preserve image from local card if server response doesn't include it
   cards[idx] = { ...updated, image: updated.image || c.image };
   closeSell();
   renderOverview();
@@ -773,20 +800,28 @@ async function completeSale() {
 async function handleLotPhoto(e) {
   const file = e.target.files[0];
   if (!file) return;
+  // Reset file input so same file can be re-selected
+  e.target.value = '';
   lotCards = [];
   document.getElementById('lot-list').innerHTML = '';
   document.getElementById('lot-rec').innerHTML = '';
   document.getElementById('lot-margin-wrap').style.display = 'none';
   document.getElementById('lot-scanning').style.display = 'block';
+  document.getElementById('lot-scanning').textContent = 'Scanning photo — this may take 15–30 seconds...';
   try {
     const base64 = await fileToBase64(file);
     const data = await apiPost('/api/scan-lot', { imageBase64: base64, mediaType: file.type });
     document.getElementById('lot-scanning').style.display = 'none';
-    lotCards = data.cards || [];
+    if (!data.cards || data.cards.length === 0) {
+      document.getElementById('lot-list').innerHTML = '<div style="text-align:center;padding:20px;color:var(--t2);font-size:13px;">No cards detected. Try a clearer photo or add cards manually.</div>';
+      return;
+    }
+    lotCards = data.cards;
     renderLot();
-  } catch {
+  } catch (err) {
     document.getElementById('lot-scanning').style.display = 'none';
-    alert('Could not scan photo. Try adding cards manually.');
+    document.getElementById('lot-list').innerHTML = '<div style="text-align:center;padding:20px;color:var(--red);font-size:13px;">Scan failed. Try again or add cards manually.</div>';
+    console.error('Lot scan error:', err);
   }
 }
 
