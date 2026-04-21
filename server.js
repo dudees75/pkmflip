@@ -155,7 +155,7 @@ const priceCache = new Map();
 function ebaySearchQuery(cardName) {
   return cardName
     .replace(/\b(PSA|BGS|CGC|SGC)\s*[\d.]+\b/gi, '')
-    .replace(/\b\d{3}\/\d{3}\b/g, '')
+    .replace(/\/\d{3}\b/g, '')
     .replace(/\b(MEP|SVP|SSP|SVI|PAL|OBF|PAR|TWM|SCR|TEF|PRE|JTC|SFA)\b/gi, '')
     .replace(/\s+/g, ' ')
     .trim()
