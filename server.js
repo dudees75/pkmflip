@@ -244,16 +244,22 @@ app.post('/api/scan', auth, async (req, res) => {
       })
     });
     const data = await r.json();
-    const parsed = JSON.parse((data.content?.[0]?.text||'{}').replace(/```json|```/g,'').trim());
+    const rawText = (data.content?.[0]?.text||'{}').replace(/```json|```/g,'').trim();
+    console.log('[SCAN] Claude raw response:', rawText);
+    const parsed = JSON.parse(rawText);
+    console.log('[SCAN] Parsed:', JSON.stringify(parsed));
     if (!parsed.name) return res.json({ detected: false });
     const variant = parsed.variant ? ` ${parsed.variant}` : '';
     const displayName = `${parsed.name}${variant}`.trim();
     const fullName = [displayName, parsed.grade].filter(Boolean).join(' ');
-    const ebayName = [parsed.name, parsed.variant, parsed.grade].filter(Boolean).join(' ');
+    const ebayName = [parsed.name, parsed.number, parsed.variant, parsed.grade].filter(Boolean).join(' ');
+    console.log('[SCAN] eBay query:', ebayName);
+    console.log('[SCAN] TCG lookup - name:', parsed.name, 'number:', parsed.number, 'setCode:', parsed.setCode);
     const [marketPrice, image] = await Promise.all([
       getMarketPrice(ebayName),
       getPokemonImage(parsed.name, parsed.number, parsed.setCode)
     ]);
+    console.log('[SCAN] marketPrice:', marketPrice, 'image:', image ? 'found' : 'null');
     res.json({ detected:true, name:fullName, grade:parsed.grade, condition:parsed.condition, marketPrice, image });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
