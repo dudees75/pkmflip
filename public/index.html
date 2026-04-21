@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="PKMflip">
+<meta name="theme-color" content="#0c0c0e">
+<title>PKMflip</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0c0c0e;--s1:#141416;--s2:#1c1c1f;--s3:#242428;
+  --b1:rgba(255,255,255,0.07);--b2:rgba(255,255,255,0.13);
+  --text:#f0efe8;--t2:#888;--t3:#444;
+  --purple:#a78bfa;--purple-d:rgba(167,139,250,0.12);
+  --green:#22c55e;--green-d:rgba(34,197,94,0.1);
+  --red:#ef4444;--red-d:rgba(239,68,68,0.1);
+  --amber:#f59e0b;
+}
+body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;}
+.app{max-width:430px;margin:0 auto;padding-bottom:80px;}
+
+/* Topbar */
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 18px 10px;border-bottom:0.5px solid var(--b1);}
+.logo{font-size:18px;font-weight:800;letter-spacing:-0.5px;}
+.logo span{color:var(--purple);}
+.curr-wrap{position:relative;}
+.curr-select{appearance:none;background:var(--s2);border:0.5px solid var(--b2);border-radius:8px;padding:6px 28px 6px 11px;font-size:12px;font-weight:600;color:var(--text);font-family:'Outfit',sans-serif;cursor:pointer;outline:none;transition:border-color 0.15s;}
+.curr-select:focus{border-color:var(--purple);}
+.curr-arrow{position:absolute;right:9px;top:50%;transform:translateY(-50%);pointer-events:none;font-size:9px;color:var(--t3);}
+
+/* Nav */
+.nav{display:flex;padding:8px 18px 0;border-bottom:0.5px solid var(--b1);overflow-x:auto;-webkit-overflow-scrolling:touch;gap:0;}
+.nav::-webkit-scrollbar{display:none;}
+.nav-btn{font-size:12px;font-weight:600;padding:8px 14px 10px;cursor:pointer;border:none;background:transparent;color:var(--t3);font-family:'Outfit',sans-serif;position:relative;transition:color 0.15s;white-space:nowrap;flex-shrink:0;}
+.nav-btn.active{color:var(--purple);}
+.nav-btn.active::after{content:'';position:absolute;bottom:0;left:14px;right:14px;height:2px;background:var(--purple);border-radius:1px;}
+
+/* Panels */
+.panel{display:none;}
+.panel.active{display:block;}
+
+/* Hero */
+.hero{padding:22px 18px 16px;}
+.hero-lbl{font-size:11px;font-weight:600;color:var(--t3);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px;}
+.hero-val{font-family:'JetBrains Mono',monospace;font-size:36px;font-weight:600;color:var(--text);letter-spacing:-1px;}
+.hero-delta{display:inline-flex;align-items:center;font-size:12px;font-weight:600;padding:3px 10px;border-radius:20px;margin-top:8px;}
+.hero-delta.up{background:var(--green-d);color:var(--green);}
+.hero-delta.dn{background:var(--red-d);color:var(--red);}
+.pair{display:flex;gap:10px;margin-top:14px;}
+.pill{flex:1;background:var(--s1);border:0.5px solid var(--b1);border-radius:11px;padding:11px 13px;}
+.pill-lbl{font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;}
+.pill-val{font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;}
+.pv-amber{color:var(--amber);}
+.pv-purple{color:var(--purple);}
+
+/* Time row */
+.trow{display:flex;gap:2px;padding:0 18px 14px;}
+.tbtn{font-size:11px;font-weight:600;padding:5px 10px;border-radius:6px;cursor:pointer;color:var(--t3);border:none;background:transparent;font-family:'Outfit',sans-serif;transition:all 0.15s;}
+.tbtn.active{background:var(--s2);color:var(--text);}
+
+/* Chart */
+.chart-wrap{padding:0 18px 4px;}
+.chart-box{position:relative;width:100%;height:175px;}
+
+/* Stats */
+.sgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:14px 18px 20px;}
+.sc{background:var(--s1);border:0.5px solid var(--b1);border-radius:12px;padding:13px 14px;}
+.sc-lbl{font-size:10px;font-weight:600;color:var(--t3);text-transform:uppercase;letter-spacing:0.07em;margin-bottom:5px;}
+.sc-val{font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:600;}
+.sc-sub{font-size:10px;color:var(--t3);margin-top:2px;}
+.sv-g{color:var(--green);}
+.sv-p{color:var(--purple);}
+
+/* Section header */
+.shdr{display:flex;align-items:center;justify-content:space-between;padding:0 18px 10px;}
+.shdr-t{font-size:13px;font-weight:700;}
+.shdr-l{font-size:12px;color:var(--t2);cursor:pointer;border:none;background:none;font-family:'Outfit',sans-serif;}
+
+/* Card list */
+.clist{display:flex;flex-direction:column;gap:7px;padding:0 18px 20px;}
+.citem{background:var(--s1);border:0.5px solid var(--b1);border-radius:13px;padding:12px 13px;display:flex;align-items:center;gap:11px;cursor:pointer;transition:border-color 0.15s;text-decoration:none;}
+.citem:hover{border-color:var(--b2);}
+.citem.no-click{cursor:default;}
+.cthumb{width:42px;height:56px;border-radius:6px;background:var(--s2);overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:20px;}
+.cthumb img{width:100%;height:100%;object-fit:contain;}
+.cinfo{flex:1;min-width:0;}
+.cname{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.cmeta{font-size:11px;color:var(--t2);margin-top:2px;}
+.cbadge{display:inline-flex;font-size:10px;font-weight:600;padding:2px 7px;border-radius:4px;margin-top:4px;}
+.cb-h{background:var(--purple-d);color:var(--purple);}
+.cb-s{background:var(--green-d);color:var(--green);}
+.cb-l{background:var(--red-d);color:var(--red);}
+.cright{text-align:right;flex-shrink:0;}
+.cprofit{font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;}
+.cp-pos{color:var(--green);}
+.cp-neg{color:var(--red);}
+.cp-hld{color:var(--purple);}
+.croi{font-size:10px;color:var(--t3);margin-top:2px;}
+
+/* Empty */
+.empty{text-align:center;padding:40px 20px;color:var(--t3);}
+.empty-icon{font-size:36px;margin-bottom:10px;opacity:0.35;}
+.empty-txt{font-size:13px;line-height:1.65;}
+
+/* FAB */
+.fab{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--purple);color:#fff;border:none;border-radius:14px;padding:13px 26px;font-size:13px;font-weight:700;font-family:'Outfit',sans-serif;cursor:pointer;display:flex;align-items:center;gap:7px;z-index:80;transition:opacity 0.15s;white-space:nowrap;}
+.fab:hover{opacity:0.9;}
+.fab-plus{width:18px;height:18px;border-radius:50%;background:rgba(255,255,255,0.22);display:flex;align-items:center;justify-content:center;font-size:15px;line-height:1;}
+
+/* Overlay + sheet */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:100;display:flex;align-items:flex-end;justify-content:center;opacity:0;pointer-events:none;transition:opacity 0.2s;}
+.overlay.open{opacity:1;pointer-events:all;}
+.sheet{background:var(--s1);border:0.5px solid var(--b2);border-radius:20px 20px 0 0;padding:18px 18px 36px;width:100%;max-width:430px;transform:translateY(100%);transition:transform 0.28s cubic-bezier(0.32,0.72,0,1);max-height:90vh;overflow-y:auto;}
+.overlay.open .sheet{transform:translateY(0);}
+.handle{width:32px;height:3px;background:var(--b2);border-radius:2px;margin:0 auto 16px;}
+.sheet-title{font-size:15px;font-weight:700;margin-bottom:16px;}
+
+/* Scanner */
+.scanner{background:var(--s2);border:0.5px dashed var(--b2);border-radius:12px;height:155px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;margin-bottom:14px;cursor:pointer;position:relative;overflow:hidden;transition:border-color 0.15s;}
+.scanner:hover{border-color:var(--purple);}
+.sc-icon{width:38px;height:38px;border-radius:9px;background:var(--purple-d);display:flex;align-items:center;justify-content:center;font-size:20px;}
+.sc-lbl{font-size:12px;color:var(--t2);}
+.scan-line{position:absolute;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--purple),transparent);animation:sl 1.4s ease-in-out infinite;}
+@keyframes sl{0%{top:10%}100%{top:90%}}
+.sc-corners::before,.sc-corners::after{content:'';position:absolute;width:18px;height:18px;border-color:var(--purple);border-style:solid;border-width:2px;}
+.sc-corners::before{top:12px;left:12px;border-right:none;border-bottom:none;border-radius:3px 0 0 0;}
+.sc-corners::after{bottom:12px;right:12px;border-left:none;border-top:none;border-radius:0 0 3px 0;}
+.dot{width:5px;height:5px;border-radius:50%;background:var(--purple);animation:dp 1.1s ease-in-out infinite;display:inline-block;}
+.dot:nth-child(2){animation-delay:0.18s;}
+.dot:nth-child(3){animation-delay:0.36s;}
+@keyframes dp{0%,100%{opacity:0.2;transform:scale(0.8)}50%{opacity:1;transform:scale(1)}}
+
+/* Fields */
+.field{margin-bottom:12px;}
+.field label{display:block;font-size:10px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:5px;}
+.field input{width:100%;background:var(--s2);border:0.5px solid var(--b1);border-radius:9px;padding:11px 13px;font-size:14px;color:var(--text);font-family:'Outfit',sans-serif;outline:none;transition:border-color 0.15s;}
+.field input:focus{border-color:var(--purple);}
+.field input::placeholder{color:var(--t3);}
+.frow{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;}
+.hint{font-size:11px;color:var(--t3);line-height:1.5;margin-bottom:14px;}
+
+/* Buttons */
+.btn-main{width:100%;background:var(--purple);color:#fff;border:none;border-radius:11px;padding:13px;font-size:14px;font-weight:700;font-family:'Outfit',sans-serif;cursor:pointer;transition:opacity 0.15s;margin-top:4px;}
+.btn-main:hover{opacity:0.9;}
+.btn-cancel{width:100%;background:transparent;color:var(--t2);border:none;padding:10px;font-size:13px;font-family:'Outfit',sans-serif;cursor:pointer;margin-top:2px;}
+
+/* Sell modal */
+.sell-sum{background:var(--s2);border-radius:10px;padding:13px;margin-bottom:13px;}
+.ss-name{font-size:13px;font-weight:600;margin-bottom:8px;}
+.ss-row{display:flex;justify-content:space-between;font-size:12px;color:var(--t2);margin-bottom:3px;}
+.ss-v{font-family:'JetBrains Mono',monospace;color:var(--t2);}
+.pprev{border-radius:10px;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;margin-bottom:13px;background:var(--green-d);border:0.5px solid rgba(34,197,94,0.2);}
+.pprev.loss{background:var(--red-d);border-color:rgba(239,68,68,0.2);}
+.pp-lbl{font-size:12px;color:var(--green);}
+.pprev.loss .pp-lbl{color:var(--red);}
+.pp-val{font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:600;color:var(--green);}
+.pprev.loss .pp-val{color:var(--red);}
+
+/* Lot scanner */
+.upload-zone{background:var(--s2);border:0.5px dashed var(--b2);border-radius:12px;padding:26px;text-align:center;cursor:pointer;margin-bottom:12px;transition:border-color 0.15s;}
+.upload-zone:hover{border-color:var(--purple);}
+.uz-icon{font-size:28px;margin-bottom:7px;opacity:0.4;}
+.uz-txt{font-size:12px;color:var(--t2);line-height:1.55;}
+.lot-inp-row{display:flex;gap:7px;margin-bottom:12px;}
+.lot-inp-row input{flex:1;background:var(--s2);border:0.5px solid var(--b1);border-radius:9px;padding:10px 12px;font-size:13px;color:var(--text);font-family:'Outfit',sans-serif;outline:none;transition:border-color 0.15s;}
+.lot-inp-row input:focus{border-color:var(--purple);}
+.lot-add{background:var(--purple);color:#fff;border:none;border-radius:9px;padding:10px 15px;font-size:13px;font-weight:600;font-family:'Outfit',sans-serif;cursor:pointer;white-space:nowrap;}
+.lot-list{display:flex;flex-direction:column;gap:6px;margin-bottom:12px;}
+.lot-item{background:var(--s2);border-radius:9px;padding:9px 12px;display:flex;align-items:center;gap:10px;}
+.lot-thumb{width:30px;height:40px;border-radius:4px;background:var(--s3);overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:16px;}
+.lot-thumb img{width:100%;height:100%;object-fit:contain;}
+.lot-name{flex:1;font-size:12px;font-weight:500;}
+.lot-price{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;color:var(--green);}
+.lot-rm{background:none;border:none;color:var(--t3);font-size:17px;cursor:pointer;padding:0 2px;line-height:1;transition:color 0.15s;}
+.lot-rm:hover{color:var(--red);}
+.mrow{display:flex;align-items:center;gap:10px;margin-bottom:14px;}
+.mrow label{font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:0.07em;white-space:nowrap;}
+.mrow input[type=range]{flex:1;accent-color:var(--purple);}
+.mval{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;color:var(--purple);min-width:34px;}
+.rec{background:var(--purple-d);border:0.5px solid rgba(167,139,250,0.2);border-radius:12px;padding:14px 16px;margin-bottom:16px;}
+.rec-title{font-size:10px;font-weight:700;color:var(--purple);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px;}
+.rec-row{display:flex;justify-content:space-between;margin-bottom:4px;}
+.rec-lbl{font-size:13px;color:var(--t2);}
+.rec-val{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;}
+.rec-offer{display:flex;justify-content:space-between;margin-top:10px;padding-top:10px;border-top:0.5px solid var(--b1);}
+.rec-offer-lbl{font-size:14px;font-weight:700;}
+.rec-offer-val{font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:700;color:var(--green);}
+.rec-note{font-size:11px;color:var(--t3);margin-top:7px;line-height:1.55;}
+.lot-status{text-align:center;padding:16px;font-size:12px;color:var(--purple);}
+.lot-dots{display:flex;justify-content:center;gap:4px;margin-top:6px;}
+
+/* Loading overlay */
+.loading-screen{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;z-index:200;transition:opacity 0.3s;}
+.loading-screen.hidden{opacity:0;pointer-events:none;}
+.loading-logo{font-size:28px;font-weight:800;letter-spacing:-0.5px;}
+.loading-logo span{color:var(--purple);}
+.loading-dots{display:flex;gap:5px;margin-top:4px;}
+
+@media(max-width:380px){
+  .hero-val{font-size:30px;}
+  .nav-btn{padding:8px 11px 10px;font-size:11px;}
+}
+</style>
+</head>
+<body>
+
+<div class="loading-screen" id="loading">
+  <div class="loading-logo">PKM<span>flip</span></div>
+  <div class="loading-dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+</div>
+
+<div class="app">
+  <div class="topbar">
+    <div class="logo">PKM<span>flip</span></div>
+    <div class="curr-wrap">
+      <select class="curr-select" id="curr" onchange="setCurrency(this.value)">
+        <option value="USD">🇺🇸 USD</option>
+        <option value="CAD">🇨🇦 CAD</option>
+        <option value="EUR">🇪🇺 EUR</option>
+        <option value="GBP">🇬🇧 GBP</option>
+      </select>
+      <span class="curr-arrow">▾</span>
+    </div>
+  </div>
+
+  <div class="nav">
+    <button class="nav-btn active" onclick="showPanel('overview',this)">Overview</button>
+    <button class="nav-btn" onclick="showPanel('inventory',this)">Inventory</button>
+    <button class="nav-btn" onclick="showPanel('history',this)">History</button>
+    <button class="nav-btn" onclick="showPanel('lot',this)">Lot Scanner</button>
+  </div>
+
+  <!-- OVERVIEW -->
+  <div class="panel active" id="panel-overview">
+    <div class="hero">
+      <div class="hero-lbl">Total Profit</div>
+      <div class="hero-val" id="h-profit">$0.00</div>
+      <div class="hero-delta up" id="h-delta">+$0.00 this month</div>
+      <div class="pair">
+        <div class="pill"><div class="pill-lbl">Cost Basis</div><div class="pill-val pv-amber" id="h-cost">$0.00</div></div>
+        <div class="pill"><div class="pill-lbl">Market Value</div><div class="pill-val pv-purple" id="h-mkt">$0.00</div></div>
+      </div>
+    </div>
+    <div class="trow">
+      <button class="tbtn active" onclick="setRange('1W',this)">1W</button>
+      <button class="tbtn" onclick="setRange('1M',this)">1M</button>
+      <button class="tbtn" onclick="setRange('3M',this)">3M</button>
+      <button class="tbtn" onclick="setRange('YTD',this)">YTD</button>
+      <button class="tbtn" onclick="setRange('ALL',this)">ALL</button>
+    </div>
+    <div class="chart-wrap"><div class="chart-box"><canvas id="chart" role="img" aria-label="Cumulative profit over time">Profit chart</canvas></div></div>
+    <div class="sgrid">
+      <div class="sc"><div class="sc-lbl">Cards Flipped</div><div class="sc-val sv-g" id="s-flip">0</div><div class="sc-sub">completed</div></div>
+      <div class="sc"><div class="sc-lbl">Avg ROI</div><div class="sc-val sv-g" id="s-roi">0%</div><div class="sc-sub">per flip</div></div>
+      <div class="sc"><div class="sc-lbl">Best Flip</div><div class="sc-val sv-g" id="s-best">$0</div><div class="sc-sub" id="s-best-n">—</div></div>
+      <div class="sc"><div class="sc-lbl">Unrealized</div><div class="sc-val sv-p" id="s-unreal">$0</div><div class="sc-sub">in hand</div></div>
+    </div>
+    <div class="shdr"><span class="shdr-t">Most Valuable</span><button class="shdr-l" onclick="showPanel('inventory',document.querySelectorAll('.nav-btn')[1])">View all</button></div>
+    <div class="clist" id="top-list"></div>
+  </div>
+
+  <!-- INVENTORY -->
+  <div class="panel" id="panel-inventory">
+    <div style="padding:16px 18px 10px;display:flex;justify-content:space-between;align-items:center;">
+      <div style="font-size:16px;font-weight:700;">In Hand</div>
+      <div style="font-size:12px;color:var(--t2);" id="inv-cnt">0 cards</div>
+    </div>
+    <div class="clist" id="inv-list"></div>
+  </div>
+
+  <!-- HISTORY -->
+  <div class="panel" id="panel-history">
+    <div style="padding:16px 18px 10px;display:flex;justify-content:space-between;align-items:center;">
+      <div style="font-size:16px;font-weight:700;">Flip History</div>
+      <div style="font-size:12px;color:var(--t2);" id="hist-cnt">0 flips</div>
+    </div>
+    <div class="clist" id="hist-list"></div>
+  </div>
+
+  <!-- LOT SCANNER -->
+  <div class="panel" id="panel-lot">
+    <div style="padding:16px 18px 12px;">
+      <div style="font-size:16px;font-weight:700;margin-bottom:4px;">Lot Scanner</div>
+      <div style="font-size:12px;color:var(--t2);line-height:1.55;">Upload a photo of your lot or add cards manually. AI identifies each card and recommends a bulk offer price.</div>
+    </div>
+    <div style="padding:0 18px 20px;">
+      <div class="upload-zone" onclick="document.getElementById('lot-file').click()">
+        <input type="file" id="lot-file" accept="image/*" style="display:none;" onchange="handleLotPhoto(event)">
+        <div class="uz-icon">📷</div>
+        <div class="uz-txt">Tap to upload a photo of the lot<br><span style="color:var(--t3);">Spread cards out clearly for best results</span></div>
+      </div>
+      <div style="text-align:center;font-size:11px;color:var(--t3);margin:-4px 0 12px;">— or add cards manually —</div>
+      <div class="lot-inp-row">
+        <input type="text" id="lot-inp" placeholder="e.g. Charizard VMAX PSA 10" onkeydown="if(event.key==='Enter')addLotCard()">
+        <button class="lot-add" onclick="addLotCard()">Add</button>
+      </div>
+      <div class="lot-list" id="lot-list"></div>
+      <div id="lot-scanning" style="display:none;" class="lot-status">Identifying cards...<div class="lot-dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div></div>
+      <div id="lot-margin-wrap" style="display:none;">
+        <div class="mrow">
+          <label>Target Margin</label>
+          <input type="range" min="10" max="60" value="33" step="1" id="margin-sl" oninput="updateRec()">
+          <span class="mval" id="mval">33%</span>
+        </div>
+      </div>
+      <div id="lot-rec"></div>
+    </div>
+  </div>
+</div>
+
+<button class="fab" id="fab" onclick="openAdd()">
+  <div class="fab-plus">+</div> Add Card
+</button>
+
+<!-- ADD MODAL -->
+<div class="overlay" id="add-ov">
+  <div class="sheet">
+    <div class="handle"></div>
+    <div class="sheet-title">Add Card to Inventory</div>
+    <div class="scanner sc-corners" id="scan-box" onclick="triggerScan()">
+      <div id="sc-idle" style="display:flex;flex-direction:column;align-items:center;gap:8px;">
+        <div class="sc-icon">📷</div>
+        <div class="sc-lbl">Tap to scan card with camera</div>
+      </div>
+      <div id="sc-anim" style="display:none;flex-direction:column;align-items:center;gap:7px;position:relative;width:100%;height:100%;justify-content:center;">
+        <div class="scan-line"></div>
+        <div style="font-size:11px;color:var(--purple);position:relative;z-index:2;">Identifying card...</div>
+        <div style="display:flex;gap:4px;position:relative;z-index:2;"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+      </div>
+      <div id="sc-found" style="display:none;flex-direction:column;align-items:center;gap:5px;padding:14px;width:100%;">
+        <img id="sc-img" src="" alt="" style="width:48px;height:64px;border-radius:5px;object-fit:contain;background:var(--s3);">
+        <div id="sc-name" style="font-size:13px;font-weight:600;text-align:center;color:var(--text);"></div>
+        <div id="sc-price" style="font-size:12px;color:var(--purple);"></div>
+        <div style="font-size:10px;color:var(--t3);">Tap to scan again</div>
+      </div>
+    </div>
+    <div class="field"><label>Card Name</label><input type="text" id="in-name" placeholder="e.g. Umbreon VSTAR Rainbow Rare" oninput="debounceMarketLookup()"></div>
+    <div class="frow">
+      <div class="field" style="margin-bottom:0;"><label>Buy Cost (USD)</label><input type="number" id="in-cost" placeholder="0.00" step="0.01"></div>
+      <div class="field" style="margin-bottom:0;"><label>Market Price</label><input type="number" id="in-mkt" placeholder="fetching..." step="0.01"></div>
+    </div>
+    <div class="hint">Market price auto-fills from recent eBay sold listings when you enter the card name.</div>
+    <button class="btn-main" onclick="saveCard()">Add to Inventory</button>
+    <button class="btn-cancel" onclick="closeAdd()">Cancel</button>
+  </div>
+</div>
+
+<!-- SELL MODAL -->
+<div class="overlay" id="sell-ov">
+  <div class="sheet">
+    <div class="handle"></div>
+    <div class="sheet-title">Mark as Sold</div>
+    <div class="sell-sum" id="sell-sum"></div>
+    <div class="field"><label>Sale Price (USD)</label><input type="number" id="in-sale" placeholder="0.00" step="0.01" oninput="updatePrev()"></div>
+    <div class="pprev" id="pprev">
+      <div class="pp-lbl">Profit</div>
+      <div class="pp-val" id="pp-val">$0.00</div>
+    </div>
+    <button class="btn-main" onclick="completeSale()">Confirm Sale</button>
+    <button class="btn-cancel" onclick="closeSell()">Cancel</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+// ── STATE ─────────────────────────────────────────────────
+let cards = [];
+let rates = { USD:1, CAD:1.38, EUR:0.92, GBP:0.79 };
+let currency = 'USD';
+let range = '1W';
+let profitChart = null;
+let sellId = null;
+let lotCards = [];
+let marketDebounce = null;
+
+const SYMS = { USD:'$', CAD:'CA$', EUR:'€', GBP:'£' };
+const FALLBACK_IMGS = {
+  charizard:'https://images.pokemontcg.io/swsh4/20_hires.png',
+  umbreon:'https://images.pokemontcg.io/swsh9/215_hires.png',
+  pikachu:'https://images.pokemontcg.io/swsh4/44_hires.png',
+  gengar:'https://images.pokemontcg.io/swsh6/271_hires.png',
+  lugia:'https://images.pokemontcg.io/swsh11/186_hires.png',
+  rayquaza:'https://images.pokemontcg.io/swsh7/218_hires.png',
+  mewtwo:'https://images.pokemontcg.io/base1/10_hires.png',
+  eevee:'https://images.pokemontcg.io/swsh9/215_hires.png',
+};
+
+// ── CURRENCY ──────────────────────────────────────────────
+function fx(usd) {
+  const v = usd * (rates[currency] || 1);
+  return SYMS[currency] + Math.abs(v).toFixed(2);
+}
+function fxS(usd) {
+  const v = usd * (rates[currency] || 1);
+  return (v >= 0 ? '+' : '-') + SYMS[currency] + Math.abs(v).toFixed(2);
+}
+function setCurrency(c) {
+  currency = c;
+  renderAll();
+}
+
+async function loadRates() {
+  try {
+    const r = await fetch('/api/rates');
+    const data = await r.json();
+    rates = { USD:1, ...data };
+  } catch {}
+}
+
+// ── API ───────────────────────────────────────────────────
+async function apiGet(url) {
+  const r = await fetch(url);
+  return r.json();
+}
+async function apiPost(url, body) {
+  const r = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+  return r.json();
+}
+async function apiPatch(url, body) {
+  const r = await fetch(url, { method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+  return r.json();
+}
+
+async function loadCards() {
+  try {
+    cards = await apiGet('/api/cards');
+  } catch {
+    cards = [];
+  }
+}
+
+// ── PANELS ────────────────────────────────────────────────
+function showPanel(id, btn) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('panel-' + id).classList.add('active');
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  document.getElementById('fab').style.display = id === 'lot' ? 'none' : 'flex';
+  if (id === 'overview') renderOverview();
+  if (id === 'inventory') renderInventory();
+  if (id === 'history') renderHistory();
+}
+
+// ── COMPUTED ──────────────────────────────────────────────
+const soldCards = () => cards.filter(c => c.sold);
+const heldCards = () => cards.filter(c => !c.sold);
+const totalProfit = () => soldCards().reduce((s, c) => s + (c.salePrice - c.cost), 0);
+const monthProfit = () => {
+  const n = new Date(), m = n.getMonth(), y = n.getFullYear();
+  return soldCards().filter(c => { const d = new Date(c.soldDate); return d.getMonth() === m && d.getFullYear() === y; })
+    .reduce((s, c) => s + (c.salePrice - c.cost), 0);
+};
+const totalCost = () => heldCards().reduce((s, c) => s + c.cost, 0);
+const totalMkt = () => heldCards().reduce((s, c) => s + (c.marketPrice || c.cost), 0);
+
+// ── RENDER ────────────────────────────────────────────────
+function renderAll() { renderOverview(); renderInventory(); renderHistory(); }
+
+function renderOverview() {
+  const tp = totalProfit(), mp = monthProfit();
+  document.getElementById('h-profit').textContent = fx(tp);
+  const d = document.getElementById('h-delta');
+  d.textContent = fxS(mp) + ' this month';
+  d.className = 'hero-delta ' + (mp >= 0 ? 'up' : 'dn');
+  document.getElementById('h-cost').textContent = fx(totalCost());
+  document.getElementById('h-mkt').textContent = fx(totalMkt());
+  const s = soldCards();
+  document.getElementById('s-flip').textContent = s.length;
+  const rois = s.map(c => ((c.salePrice - c.cost) / c.cost) * 100);
+  const avg = rois.length ? rois.reduce((a, b) => a + b, 0) / rois.length : 0;
+  document.getElementById('s-roi').textContent = avg.toFixed(0) + '%';
+  const best = s.map(c => ({ p: c.salePrice - c.cost, n: c.name })).sort((a, b) => b.p - a.p)[0];
+  document.getElementById('s-best').textContent = best ? fx(best.p) : '$0';
+  document.getElementById('s-best-n').textContent = best ? best.n.split(' ').slice(0, 3).join(' ') : '—';
+  document.getElementById('s-unreal').textContent = fx(totalMkt() - totalCost());
+  renderChart(range);
+  const top = heldCards().sort((a, b) => (b.marketPrice || b.cost) - (a.marketPrice || a.cost)).slice(0, 3);
+  const el = document.getElementById('top-list');
+  el.innerHTML = top.length ? top.map((c, i) => cardHTML(c, i, true)).join('') :
+    '<div class="empty"><div class="empty-icon">🃏</div><div class="empty-txt">No cards yet.<br>Tap + Add Card to start tracking.</div></div>';
+}
+
+function renderInventory() {
+  const h = heldCards();
+  document.getElementById('inv-cnt').textContent = h.length + ' card' + (h.length !== 1 ? 's' : '');
+  const el = document.getElementById('inv-list');
+  el.innerHTML = h.length ? h.map((c, i) => cardHTML(c, i, true)).join('') :
+    '<div class="empty"><div class="empty-icon">🃏</div><div class="empty-txt">No cards in inventory yet.</div></div>';
+}
+
+function renderHistory() {
+  const s = soldCards().sort((a, b) => new Date(b.soldDate) - new Date(a.soldDate));
+  document.getElementById('hist-cnt').textContent = s.length + ' flip' + (s.length !== 1 ? 's' : '');
+  const el = document.getElementById('hist-list');
+  el.innerHTML = s.length ? s.map((c, i) => cardHTML(c, i, false)).join('') :
+    '<div class="empty"><div class="empty-icon">📋</div><div class="empty-txt">No completed flips yet.</div></div>';
+}
+
+function cardHTML(c, i, clickable) {
+  const isHeld = !c.sold;
+  const profit = isHeld ? (c.marketPrice || c.cost) - c.cost : c.salePrice - c.cost;
+  const roi = c.cost > 0 ? ((profit / c.cost) * 100).toFixed(0) : '0';
+  const pos = profit >= 0;
+  const badge = isHeld ? '<span class="cbadge cb-h">Tap to sell</span>' :
+    `<span class="cbadge ${pos ? 'cb-s' : 'cb-l'}">${pos ? 'Profit' : 'Loss'}</span>`;
+  const profVal = isHeld ? fx(c.marketPrice || c.cost) : (pos ? '+' : '-') + fx(Math.abs(profit));
+  const imgKey = Object.keys(FALLBACK_IMGS).find(k => (c.name || '').toLowerCase().includes(k));
+  const imgSrc = c.image || (imgKey ? FALLBACK_IMGS[imgKey] : '');
+  const imgTag = imgSrc ? `<img src="${imgSrc}" alt="${c.name}" style="width:100%;height:100%;object-fit:contain;" onerror="this.style.display='none'">` : '🃏';
+  const click = clickable && isHeld ? `onclick="openSell('${c.id}')"` : '';
+  return `<div class="citem${!clickable || !isHeld ? ' no-click' : ''}" ${click}>
+    <div class="cthumb">${imgTag}</div>
+    <div class="cinfo">
+      <div class="cname">${c.name}</div>
+      <div class="cmeta">${isHeld ? 'Cost: ' + fx(c.cost) : 'Sold ' + new Date(c.soldDate).toLocaleDateString('en-US', { month:'short', day:'numeric' }) + ' · ' + fx(c.cost) + ' → ' + fx(c.salePrice)}</div>
+      ${badge}
+    </div>
+    <div class="cright">
+      <div class="cprofit ${isHeld ? 'cp-hld' : pos ? 'cp-pos' : 'cp-neg'}">${profVal}</div>
+      <div class="croi" style="color:${pos ? 'var(--green)' : 'var(--red)'}">${pos ? '+' : ''}${roi}% ROI</div>
+    </div>
+  </div>`;
+}
+
+// ── CHART ─────────────────────────────────────────────────
+function renderChart(r) {
+  const s = soldCards().sort((a, b) => new Date(a.soldDate) - new Date(b.soldDate));
+  const now = new Date(); let cut = new Date();
+  if (r === '1W') cut.setDate(now.getDate() - 7);
+  else if (r === '1M') cut.setMonth(now.getMonth() - 1);
+  else if (r === '3M') cut.setMonth(now.getMonth() - 3);
+  else if (r === 'YTD') cut = new Date(now.getFullYear(), 0, 1);
+  else cut = new Date(0);
+  let fil = s.filter(c => new Date(c.soldDate) >= cut);
+  if (!fil.length && s.length) fil = s;
+  const labels = [], data = [];
+  let run = r !== 'ALL' ? s.filter(c => new Date(c.soldDate) < cut).reduce((s, c) => s + (c.salePrice - c.cost), 0) : 0;
+  fil.forEach(c => {
+    run += c.salePrice - c.cost;
+    labels.push(new Date(c.soldDate).toLocaleDateString('en-US', { month:'short', day:'numeric' }));
+    data.push(parseFloat((run * (rates[currency] || 1)).toFixed(2)));
+  });
+  if (!labels.length) { labels.push('Now'); data.push(0); }
+  const pos = (data[data.length - 1] || 0) >= 0;
+  const lc = pos ? '#22c55e' : '#ef4444';
+  if (profitChart) profitChart.destroy();
+  profitChart = new Chart(document.getElementById('chart'), {
+    type: 'line',
+    data: { labels, datasets: [{ data, borderColor: lc, borderWidth: 2, backgroundColor: pos ? 'rgba(34,197,94,0.07)' : 'rgba(239,68,68,0.07)', fill: true, pointRadius: data.length > 8 ? 0 : 3, pointBackgroundColor: lc, tension: 0.4 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => SYMS[currency] + Math.abs(ctx.raw).toFixed(2) }, backgroundColor: '#1c1c1f', titleColor: '#555', bodyColor: '#f0efe8', borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1 } }, scales: { x: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#333', font: { size: 10 }, maxTicksLimit: 6 } }, y: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#333', font: { size: 10 }, callback: v => SYMS[currency] + Math.abs(v).toFixed(0) } } } }
+  });
+}
+
+function setRange(r, btn) {
+  range = r;
+  document.querySelectorAll('.tbtn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderChart(r);
+}
+
+// ── ADD CARD ──────────────────────────────────────────────
+function openAdd() {
+  document.getElementById('sc-idle').style.display = 'flex';
+  document.getElementById('sc-anim').style.display = 'none';
+  document.getElementById('sc-found').style.display = 'none';
+  ['in-name', 'in-cost', 'in-mkt'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('add-ov').classList.add('open');
+}
+function closeAdd() { document.getElementById('add-ov').classList.remove('open'); }
+
+function debounceMarketLookup() {
+  clearTimeout(marketDebounce);
+  marketDebounce = setTimeout(async () => {
+    const name = document.getElementById('in-name').value.trim();
+    if (name.length < 4) return;
+    document.getElementById('in-mkt').placeholder = 'fetching...';
+    try {
+      const data = await apiGet('/api/market-price?name=' + encodeURIComponent(name));
+      if (data.price) document.getElementById('in-mkt').value = data.price.toFixed(2);
+      if (data.image) {
+        const found = document.getElementById('sc-found');
+        document.getElementById('sc-idle').style.display = 'none';
+        found.style.display = 'flex';
+        document.getElementById('sc-img').src = data.image;
+        document.getElementById('sc-name').textContent = name;
+        document.getElementById('sc-price').textContent = 'Market: ' + fx(data.price);
+      }
+    } catch {}
+    document.getElementById('in-mkt').placeholder = 'auto';
+  }, 800);
+}
+
+function triggerScan() {
+  const found = document.getElementById('sc-found');
+  if (found.style.display === 'flex') {
+    found.style.display = 'none';
+    document.getElementById('sc-idle').style.display = 'flex';
+    document.getElementById('in-name').value = '';
+    document.getElementById('in-mkt').value = '';
+    return;
+  }
+
+  // Real camera scan
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.capture = 'environment';
+  input.onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    document.getElementById('sc-idle').style.display = 'none';
+    document.getElementById('sc-anim').style.display = 'flex';
+    try {
+      const base64 = await fileToBase64(file);
+      const data = await apiPost('/api/scan', { imageBase64: base64, mediaType: file.type });
+      document.getElementById('sc-anim').style.display = 'none';
+      if (data.detected) {
+        found.style.display = 'flex';
+        document.getElementById('sc-img').src = data.image || '';
+        document.getElementById('sc-name').textContent = data.name;
+        document.getElementById('sc-price').textContent = data.marketPrice ? 'Market: ' + fx(data.marketPrice) : 'No price found';
+        document.getElementById('in-name').value = data.name;
+        if (data.marketPrice) document.getElementById('in-mkt').value = data.marketPrice.toFixed(2);
+      } else {
+        document.getElementById('sc-idle').style.display = 'flex';
+        alert('Could not identify card. Please enter the name manually.');
+      }
+    } catch {
+      document.getElementById('sc-idle').style.display = 'flex';
+      document.getElementById('sc-anim').style.display = 'none';
+    }
+  };
+  input.click();
+}
+
+function fileToBase64(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result.split(',')[1]);
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+}
+
+async function saveCard() {
+  const name = document.getElementById('in-name').value.trim();
+  const cost = parseFloat(document.getElementById('in-cost').value);
+  const mkt = parseFloat(document.getElementById('in-mkt').value) || null;
+  if (!name || isNaN(cost) || cost <= 0) { alert('Please enter a card name and buy cost.'); return; }
+  const imgKey = Object.keys(FALLBACK_IMGS).find(k => name.toLowerCase().includes(k));
+  const image = imgKey ? FALLBACK_IMGS[imgKey] : null;
+  const card = await apiPost('/api/cards', { name, cost, marketPrice: mkt, image });
+  cards.push(card);
+  closeAdd();
+  renderOverview();
+}
+
+// ── SELL ──────────────────────────────────────────────────
+function openSell(id) {
+  sellId = id;
+  const c = cards.find(x => x.id === id);
+  if (!c) return;
+  document.getElementById('in-sale').value = '';
+  document.getElementById('sell-sum').innerHTML = `<div class="ss-name">${c.name}</div>
+    <div class="ss-row"><span>Buy cost</span><span class="ss-v">${fx(c.cost)}</span></div>
+    <div class="ss-row"><span>Market price</span><span class="ss-v">${c.marketPrice ? fx(c.marketPrice) : '—'}</span></div>`;
+  updatePrev();
+  document.getElementById('sell-ov').classList.add('open');
+}
+function closeSell() { document.getElementById('sell-ov').classList.remove('open'); sellId = null; }
+
+function updatePrev() {
+  const c = cards.find(x => x.id === sellId);
+  if (!c) return;
+  const sale = parseFloat(document.getElementById('in-sale').value) || 0;
+  const profit = sale - c.cost;
+  const el = document.getElementById('pprev');
+  el.className = 'pprev' + (profit < 0 ? ' loss' : '');
+  document.getElementById('pp-val').textContent = fxS(profit);
+}
+
+async function completeSale() {
+  const c = cards.find(x => x.id === sellId);
+  if (!c) return;
+  const sale = parseFloat(document.getElementById('in-sale').value);
+  if (isNaN(sale) || sale <= 0) { alert('Please enter a sale price.'); return; }
+  const updated = await apiPatch('/api/cards/' + sellId + '/sell', { salePrice: sale });
+  const idx = cards.indexOf(c);
+  cards[idx] = updated;
+  closeSell();
+  renderOverview();
+}
+
+// ── LOT SCANNER ───────────────────────────────────────────
+async function handleLotPhoto(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  lotCards = [];
+  document.getElementById('lot-list').innerHTML = '';
+  document.getElementById('lot-rec').innerHTML = '';
+  document.getElementById('lot-margin-wrap').style.display = 'none';
+  document.getElementById('lot-scanning').style.display = 'block';
+  try {
+    const base64 = await fileToBase64(file);
+    const data = await apiPost('/api/scan-lot', { imageBase64: base64, mediaType: file.type });
+    document.getElementById('lot-scanning').style.display = 'none';
+    lotCards = data.cards || [];
+    renderLot();
+  } catch {
+    document.getElementById('lot-scanning').style.display = 'none';
+    alert('Could not scan photo. Try adding cards manually.');
+  }
+}
+
+async function addLotCard() {
+  const inp = document.getElementById('lot-inp');
+  const name = inp.value.trim();
+  if (!name) return;
+  inp.value = '';
+  document.getElementById('lot-scanning').style.display = 'block';
+  try {
+    const data = await apiGet('/api/market-price?name=' + encodeURIComponent(name));
+    document.getElementById('lot-scanning').style.display = 'none';
+    const imgKey = Object.keys(FALLBACK_IMGS).find(k => name.toLowerCase().includes(k));
+    lotCards.push({ name, marketPrice: data.price || 0, image: data.image || (imgKey ? FALLBACK_IMGS[imgKey] : null) });
+    renderLot();
+  } catch {
+    document.getElementById('lot-scanning').style.display = 'none';
+    lotCards.push({ name, marketPrice: 0, image: null });
+    renderLot();
+  }
+}
+
+function removeLotCard(i) { lotCards.splice(i, 1); renderLot(); }
+
+function renderLot() {
+  const el = document.getElementById('lot-list');
+  if (!lotCards.length) {
+    el.innerHTML = '';
+    document.getElementById('lot-rec').innerHTML = '';
+    document.getElementById('lot-margin-wrap').style.display = 'none';
+    return;
+  }
+  el.innerHTML = lotCards.map((c, i) => {
+    const imgTag = c.image ? `<img src="${c.image}" alt="${c.name}" style="width:100%;height:100%;object-fit:contain;">` : '🃏';
+    return `<div class="lot-item">
+      <div class="lot-thumb">${imgTag}</div>
+      <div class="lot-name">${c.name}</div>
+      <div class="lot-price">${fx(c.marketPrice || 0)}</div>
+      <button class="lot-rm" onclick="removeLotCard(${i})">×</button>
+    </div>`;
+  }).join('');
+  document.getElementById('lot-margin-wrap').style.display = 'block';
+  updateRec();
+}
+
+function updateRec() {
+  if (!lotCards.length) return;
+  const margin = parseInt(document.getElementById('margin-sl').value);
+  document.getElementById('mval').textContent = margin + '%';
+  const total = lotCards.reduce((s, c) => s + (c.marketPrice || 0), 0);
+  const offer = total * (1 - margin / 100);
+  const saved = total - offer;
+  document.getElementById('lot-rec').innerHTML = `<div class="rec">
+    <div class="rec-title">Bulk Buy Recommendation</div>
+    <div class="rec-row"><span class="rec-lbl">Lot market value (${lotCards.length} cards)</span><span class="rec-val">${fx(total)}</span></div>
+    <div class="rec-row"><span class="rec-lbl">Target margin</span><span class="rec-val">${margin}%</span></div>
+    <div class="rec-row"><span class="rec-lbl">Your profit at market</span><span class="rec-val" style="color:var(--green)">${fx(saved)}</span></div>
+    <div class="rec-offer"><span class="rec-offer-lbl">Offer this amount</span><span class="rec-offer-val">${fx(offer)}</span></div>
+    <div class="rec-note">At ${fx(offer)}, you'd profit ${fx(saved)} (${margin}% margin) if all cards sell at current market price.</div>
+  </div>`;
+}
+
+// Dismiss modals on backdrop click
+document.getElementById('add-ov').addEventListener('click', e => { if (e.target === document.getElementById('add-ov')) closeAdd(); });
+document.getElementById('sell-ov').addEventListener('click', e => { if (e.target === document.getElementById('sell-ov')) closeSell(); });
+
+// ── INIT ──────────────────────────────────────────────────
+async function init() {
+  await Promise.all([loadCards(), loadRates()]);
+  renderOverview();
+  document.getElementById('loading').classList.add('hidden');
+}
+
+init();
+</script>
+</body>
+</html>
