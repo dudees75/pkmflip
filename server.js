@@ -178,11 +178,16 @@ async function getMarketPrice(cardName) {
       'sortOrder':'EndTimeSoonest','paginationInput.entriesPerPage':'50'
     });
     const r = await fetch(`https://svcs.ebay.com/services/search/FindingService/v1?${params}`);
-    if (!r.ok) return null;
+    if (!r.ok) { console.log('[EBAY] HTTP error:', r.status); return null; }
     const data = await r.json();
+    const errMsg = data?.findCompletedItemsResponse?.[0]?.errorMessage?.[0]?.error?.[0]?.message?.[0];
+    if (errMsg) console.log('[EBAY] API error:', errMsg);
+    const totalResults = data?.findCompletedItemsResponse?.[0]?.searchResult?.[0]?.['@count'];
+    console.log('[EBAY] Query:', query, '-> results:', totalResults);
     const items = data?.findCompletedItemsResponse?.[0]?.searchResult?.[0]?.item || [];
     let prices = items.map(i => parseFloat(i.sellingStatus?.[0]?.currentPrice?.[0]?.__value__||0)).filter(p=>p>1);
-    if (prices.length < 3) return null;
+    console.log('[EBAY] Valid prices found:', prices.length, prices.slice(0,5));
+    if (prices.length < 1) return null;
     prices.sort((a,b)=>a-b);
     const trim = Math.max(1, Math.floor(prices.length*0.1));
     const t = prices.slice(trim, prices.length-trim);
