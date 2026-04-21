@@ -162,65 +162,64 @@ function ebaySearchQuery(cardName) {
     .slice(0, 60);
 }
 
+// eBay token cache for Browse API
+let ebayBrowseToken = '';
+let ebayBrowseTokenExpiry = 0;
+
+async function getEbayBrowseToken() {
+  if (ebayBrowseToken && Date.now() < ebayBrowseTokenExpiry - 60000) return ebayBrowseToken;
+  if (!EBAY_CLIENT_ID || !EBAY_CLIENT_SECRET) return null;
+  try {
+    const creds = Buffer.from(`${EBAY_CLIENT_ID}:${EBAY_CLIENT_SECRET}`).toString('base64');
+    const r = await fetch('https://api.ebay.com/identity/v1/oauth2/token', {
+      method: 'POST',
+      headers: { 'Authorization': `Basic ${creds}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'grant_type=client_credentials&scope=https%3A%2F%2Fapi.ebay.com%2Foauth%2Fapi_scope'
+    });
+    const data = await r.json();
+    if (!r.ok) { console.log('[EBAY] Token error:', data.error_description); return null; }
+    ebayBrowseToken = data.access_token;
+    ebayBrowseTokenExpiry = Date.now() + (data.expires_in * 1000);
+    console.log('[EBAY] Got fresh Browse API token');
+    return ebayBrowseToken;
+  } catch (e) { console.log('[EBAY] Token fetch error:', e.message); return null; }
+}
+
 async function getMarketPrice(cardName) {
   const key = cardName.toLowerCase();
   const cached = priceCache.get(key);
   if (cached && Date.now() - cached.ts < 7200000) return cached.price;
   try {
-    if (!EBAY_CLIENT_ID) return null;
+    const token = await getEbayBrowseToken();
+    if (!token) return null;
     const query = ebaySearchQuery(cardName);
-    const params = new URLSearchParams({
-      'OPERATION-NAME':'findCompletedItems','SERVICE-VERSION':'1.0.3',
-      'SECURITY-APPNAME':EBAY_CLIENT_ID,'RESPONSE-DATA-FORMAT':'JSON',
-      'keywords':`pokemon ${query}`,'categoryId':'183454',
-      'itemFilter(0).name':'SoldItemsOnly','itemFilter(0).value':'true',
-      'itemFilter(1).name':'Currency','itemFilter(1).value':'USD',
-      'sortOrder':'EndTimeSoonest','paginationInput.entriesPerPage':'50'
+    // Use Browse API to search active + recently sold listings
+    const url = `https://api.ebay.com/buy/browse/v1/item_summary/search?q=${encodeURIComponent('pokemon card ' + query)}&category_ids=183454&limit=100&filter=price%3A%5B1..2000%5D%2CpriceCurrency%3AUSD&sort=price`;
+    const r = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${token}`, 'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US' }
     });
-    let items = [];
-    // Try with category filter first
-    const r = await fetch(`https://svcs.ebay.com/services/search/FindingService/v1?${params}`);
-    if (r.ok) {
-      const data = await r.json();
-      const errMsg = data?.findCompletedItemsResponse?.[0]?.errorMessage?.[0]?.error?.[0]?.message?.[0];
-      if (errMsg) console.log('[EBAY] API error:', errMsg);
-      const totalResults = data?.findCompletedItemsResponse?.[0]?.searchResult?.[0]?.['@count'];
-      console.log('[EBAY] Query:', query, '-> results:', totalResults);
-      items = data?.findCompletedItemsResponse?.[0]?.searchResult?.[0]?.item || [];
-    } else {
-      const errText = await r.text().catch(() => 'unknown');
-      console.log('[EBAY] HTTP error:', r.status, errText.slice(0, 300));
-      // Fallback: try without category restriction
-      const params2 = new URLSearchParams({
-        'OPERATION-NAME':'findCompletedItems','SERVICE-VERSION':'1.0.3',
-        'SECURITY-APPNAME':EBAY_CLIENT_ID,'RESPONSE-DATA-FORMAT':'JSON',
-        'keywords':`pokemon card ${query}`,
-        'itemFilter(0).name':'SoldItemsOnly','itemFilter(0).value':'true',
-        'itemFilter(1).name':'Currency','itemFilter(1).value':'USD',
-        'sortOrder':'EndTimeSoonest','paginationInput.entriesPerPage':'50'
-      });
-      const r2 = await fetch(`https://svcs.ebay.com/services/search/FindingService/v1?${params2}`);
-      if (r2.ok) {
-        const data2 = await r2.json();
-        items = data2?.findCompletedItemsResponse?.[0]?.searchResult?.[0]?.item || [];
-        console.log('[EBAY] Fallback (no category) items:', items.length);
-      } else {
-        console.log('[EBAY] Fallback also failed:', r2.status);
-        return null;
-      }
+    if (!r.ok) {
+      const errText = await r.text().catch(() => '');
+      console.log('[EBAY] Browse API error:', r.status, errText.slice(0, 200));
+      return null;
     }
-    let prices = items.map(i => parseFloat(i.sellingStatus?.[0]?.currentPrice?.[0]?.__value__||0)).filter(p=>p>1);
-    console.log('[EBAY] Valid prices found:', prices.length, prices.slice(0,5));
+    const data = await r.json();
+    const items = data.itemSummaries || [];
+    console.log('[EBAY] Browse query:', query, '-> items:', items.length);
+    let prices = items
+      .map(i => parseFloat(i.price?.value || 0))
+      .filter(p => p > 1);
+    console.log('[EBAY] Valid prices:', prices.length, prices.slice(0, 5));
     if (prices.length < 1) return null;
-    prices.sort((a,b)=>a-b);
-    const trim = Math.max(1, Math.floor(prices.length*0.1));
-    const t = prices.slice(trim, prices.length-trim);
-    const mid = Math.floor(t.length/2);
-    const median = t.length%2===0 ? (t[mid-1]+t[mid])/2 : t[mid];
-    const price = Math.round(median*100)/100;
-    priceCache.set(key, {price, ts:Date.now()});
+    prices.sort((a, b) => a - b);
+    const trim = prices.length >= 10 ? Math.max(1, Math.floor(prices.length * 0.1)) : 0;
+    const t = prices.slice(trim, prices.length - (trim || 0));
+    const mid = Math.floor(t.length / 2);
+    const median = t.length % 2 === 0 ? (t[mid - 1] + t[mid]) / 2 : t[mid];
+    const price = Math.round(median * 100) / 100;
+    priceCache.set(key, { price, ts: Date.now() });
     return price;
-  } catch { return null; }
+  } catch (e) { console.log('[EBAY] getMarketPrice error:', e.message); return null; }
 }
 
 const imgCache = new Map();
@@ -286,17 +285,26 @@ app.post('/api/scan', auth, async (req, res) => {
     try {
       const numRaw = (parsed.number || '').replace(/\/.*/, '').trim();
       const numClean = numRaw.replace(/^0+/, '');
+      // Try name + number (no quotes on number for TCG API)
       if (numClean) {
-        const q1 = `name:"${parsed.name}" number:${numClean}`;
+        const q1 = `name:${parsed.name} number:${numClean}`;
         const r1 = await fetch(`https://api.pokemontcg.io/v2/cards?q=${encodeURIComponent(q1)}&pageSize=20`);
         if (r1.ok) tcgCards = (await r1.json())?.data || [];
-        console.log('[SCAN] TCG by number:', q1, '->', tcgCards.length, 'found');
+        console.log('[SCAN] TCG by name+number:', q1, '->', tcgCards.length, 'found');
       }
+      // Try with original number (with leading zeros)
+      if (!tcgCards.length && numRaw && numRaw !== numClean) {
+        const q1b = `name:${parsed.name} number:${numRaw}`;
+        const r1b = await fetch(`https://api.pokemontcg.io/v2/cards?q=${encodeURIComponent(q1b)}&pageSize=20`);
+        if (r1b.ok) tcgCards = (await r1b.json())?.data || [];
+        console.log('[SCAN] TCG by name+padded number:', q1b, '->', tcgCards.length, 'found');
+      }
+      // Fallback: name only
       if (!tcgCards.length) {
-        const q2 = `name:"${parsed.name}"`;
+        const q2 = `name:${parsed.name}`;
         const r2 = await fetch(`https://api.pokemontcg.io/v2/cards?q=${encodeURIComponent(q2)}&pageSize=20`);
         if (r2.ok) tcgCards = (await r2.json())?.data || [];
-        console.log('[SCAN] TCG by name:', q2, '->', tcgCards.length, 'found');
+        console.log('[SCAN] TCG by name only:', q2, '->', tcgCards.length, 'found');
       }
     } catch (e) { console.log('[SCAN] TCG fetch error:', e.message); }
 
