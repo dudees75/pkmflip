@@ -1,21 +1,25 @@
-{
-  "name": "pkmflip",
-  "version": "2.0.0",
-  "description": "Pokemon card profit tracker with user accounts",
-  "main": "server.js",
-  "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js"
-  },
-  "dependencies": {
-    "express": "^4.18.2",
-    "node-fetch": "^2.7.0",
-    "pg": "^8.11.3",
-    "bcryptjs": "^2.4.3",
-    "jsonwebtoken": "^9.0.2",
-    "cookie-parser": "^1.4.6"
-  },
-  "engines": {
-    "node": ">=18.0.0"
-  }
-}
+# PKMflip — Pokemon Card Profit Tracker
+
+## Environment Variables (set in Railway)
+
+| Variable | Required | Description |
+|---|---|---|
+| `EBAY_CLIENT_ID` | Yes | eBay Developer App ID (for market prices) |
+| `EBAY_CLIENT_SECRET` | Yes | eBay Developer Cert ID |
+| `ANTHROPIC_API_KEY` | Yes | Claude API key (for card scanning) |
+
+## Local Development
+
+```bash
+npm install
+EBAY_CLIENT_ID=xxx EBAY_CLIENT_SECRET=xxx ANTHROPIC_API_KEY=xxx node server.js
+```
+
+Then open http://localhost:3000
+
+## Deploy to Railway
+
+1. Push this folder to a GitHub repo
+2. Connect repo in Railway
+3. Add environment variables
+4. Deploy — Railway auto-detects Node.js

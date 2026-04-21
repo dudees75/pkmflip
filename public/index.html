@@ -201,6 +201,30 @@ body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);min-
 .loading-logo span{color:var(--purple);}
 .loading-dots{display:flex;gap:5px;margin-top:4px;}
 
+/* Auth screen */
+.auth-screen{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;z-index:150;transition:opacity 0.3s;}
+.auth-screen.hidden{opacity:0;pointer-events:none;}
+.auth-box{width:100%;max-width:360px;background:var(--s1);border:0.5px solid var(--b2);border-radius:20px;padding:28px 24px 24px;}
+.auth-logo{font-size:22px;font-weight:800;letter-spacing:-0.5px;text-align:center;margin-bottom:4px;}
+.auth-logo span{color:var(--purple);}
+.auth-tagline{font-size:12px;color:var(--t2);text-align:center;margin-bottom:24px;}
+.auth-tabs{display:flex;background:var(--s2);border-radius:10px;padding:3px;margin-bottom:20px;}
+.auth-tab{flex:1;text-align:center;padding:7px;font-size:13px;font-weight:600;border-radius:8px;cursor:pointer;color:var(--t2);border:none;background:transparent;font-family:"Outfit",sans-serif;transition:all 0.15s;}
+.auth-tab.active{background:var(--purple);color:#fff;}
+.auth-field{margin-bottom:12px;}
+.auth-field label{display:block;font-size:10px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:5px;}
+.auth-field input{width:100%;background:var(--s2);border:0.5px solid var(--b1);border-radius:9px;padding:11px 13px;font-size:14px;color:var(--text);font-family:"Outfit",sans-serif;outline:none;transition:border-color 0.15s;}
+.auth-field input:focus{border-color:var(--purple);}
+.auth-field input::placeholder{color:var(--t3);}
+.auth-btn{width:100%;background:var(--purple);color:#fff;border:none;border-radius:11px;padding:13px;font-size:14px;font-weight:700;font-family:"Outfit",sans-serif;cursor:pointer;margin-top:6px;transition:opacity 0.15s;}
+.auth-btn:hover{opacity:0.9;}
+.auth-btn:disabled{opacity:0.5;cursor:not-allowed;}
+.auth-err{font-size:12px;color:var(--red);text-align:center;margin-top:10px;min-height:18px;}
+.auth-note{font-size:11px;color:var(--t3);text-align:center;margin-top:12px;line-height:1.5;}
+.user-btn{display:flex;align-items:center;gap:7px;background:var(--s2);border:0.5px solid var(--b1);border-radius:8px;padding:6px 11px;cursor:pointer;font-size:12px;font-weight:600;color:var(--t2);font-family:"Outfit",sans-serif;transition:all 0.15s;}
+.user-btn:hover{color:var(--text);}
+.user-avatar{width:22px;height:22px;border-radius:50%;background:var(--purple-d);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--purple);flex-shrink:0;}
+
 @media(max-width:380px){
   .hero-val{font-size:30px;}
   .nav-btn{padding:8px 11px 10px;font-size:11px;}
@@ -214,17 +238,48 @@ body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);min-
   <div class="loading-dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
 </div>
 
-<div class="app">
+<!-- AUTH SCREEN -->
+<div class="auth-screen" id="auth-screen">
+  <div class="auth-box">
+    <div class="auth-logo">PKM<span>flip</span></div>
+    <div class="auth-tagline">Track your Pokemon card flips</div>
+    <div class="auth-tabs">
+      <button class="auth-tab active" id="tab-login" onclick="switchAuthTab("login")">Log In</button>
+      <button class="auth-tab" id="tab-signup" onclick="switchAuthTab("signup")">Sign Up</button>
+    </div>
+    <div id="auth-login">
+      <div class="auth-field"><label>Email</label><input type="email" id="login-email" placeholder="you@email.com" onkeydown="if(event.key==="Enter")doLogin()"></div>
+      <div class="auth-field"><label>Password</label><input type="password" id="login-pass" placeholder="••••••••" onkeydown="if(event.key==="Enter")doLogin()"></div>
+      <button class="auth-btn" id="login-btn" onclick="doLogin()">Log In</button>
+    </div>
+    <div id="auth-signup" style="display:none;">
+      <div class="auth-field"><label>Display Name</label><input type="text" id="signup-name" placeholder="Your name"></div>
+      <div class="auth-field"><label>Email</label><input type="email" id="signup-email" placeholder="you@email.com"></div>
+      <div class="auth-field"><label>Password</label><input type="password" id="signup-pass" placeholder="Min 6 characters" onkeydown="if(event.key==="Enter")doSignup()"></div>
+      <button class="auth-btn" id="signup-btn" onclick="doSignup()">Create Account</button>
+    </div>
+    <div class="auth-err" id="auth-err"></div>
+    <div class="auth-note">Your card data is private and tied to your account only.</div>
+  </div>
+</div>
+
+<div id="app-wrap" style="display:none;"><div class="app">
   <div class="topbar">
     <div class="logo">PKM<span>flip</span></div>
-    <div class="curr-wrap">
-      <select class="curr-select" id="curr" onchange="setCurrency(this.value)">
-        <option value="USD">🇺🇸 USD</option>
-        <option value="CAD">🇨🇦 CAD</option>
-        <option value="EUR">🇪🇺 EUR</option>
-        <option value="GBP">🇬🇧 GBP</option>
-      </select>
-      <span class="curr-arrow">▾</span>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <div class="curr-wrap">
+        <select class="curr-select" id="curr" onchange="setCurrency(this.value)">
+          <option value="USD">🇺🇸 USD</option>
+          <option value="CAD">🇨🇦 CAD</option>
+          <option value="EUR">🇪🇺 EUR</option>
+          <option value="GBP">🇬🇧 GBP</option>
+        </select>
+        <span class="curr-arrow">▾</span>
+      </div>
+      <button class="user-btn" id="user-btn" onclick="handleUserBtn()">
+        <div class="user-avatar" id="user-avatar">?</div>
+        <span id="user-name">Account</span>
+      </button>
     </div>
   </div>
 
@@ -313,6 +368,7 @@ body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);min-
   </div>
 </div>
 
+</div>
 <button class="fab" id="fab" onclick="openAdd()">
   <div class="fab-plus">+</div> Add Card
 </button>
@@ -640,10 +696,23 @@ function triggerScan() {
 
 function fileToBase64(file) {
   return new Promise((res, rej) => {
-    const r = new FileReader();
-    r.onload = () => res(r.result.split(',')[1]);
-    r.onerror = rej;
-    r.readAsDataURL(file);
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const MAX = 1024;
+      let w = img.width, h = img.height;
+      if (w > MAX || h > MAX) {
+        if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+        else { w = Math.round(w * MAX / h); h = MAX; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      res(canvas.toDataURL('image/jpeg', 0.8).split(',')[1]);
+    };
+    img.onerror = rej;
+    img.src = url;
   });
 }
 
@@ -780,10 +849,109 @@ function updateRec() {
 document.getElementById('add-ov').addEventListener('click', e => { if (e.target === document.getElementById('add-ov')) closeAdd(); });
 document.getElementById('sell-ov').addEventListener('click', e => { if (e.target === document.getElementById('sell-ov')) closeSell(); });
 
+// ── AUTH ──────────────────────────────────────────────────
+let currentUser = null;
+
+function switchAuthTab(tab) {
+  document.getElementById('auth-login').style.display = tab === 'login' ? 'block' : 'none';
+  document.getElementById('auth-signup').style.display = tab === 'signup' ? 'block' : 'none';
+  document.getElementById('tab-login').classList.toggle('active', tab === 'login');
+  document.getElementById('tab-signup').classList.toggle('active', tab === 'signup');
+  document.getElementById('auth-err').textContent = '';
+}
+
+async function doLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const pass = document.getElementById('login-pass').value;
+  const btn = document.getElementById('login-btn');
+  if (!email || !pass) return setAuthErr('Please enter email and password');
+  btn.disabled = true; btn.textContent = 'Logging in...';
+  try {
+    const r = await fetch('/api/auth/login', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ email, password: pass })
+    });
+    const data = await r.json();
+    if (!r.ok) { setAuthErr(data.error); btn.disabled = false; btn.textContent = 'Log In'; return; }
+    currentUser = data.user;
+    showApp();
+  } catch { setAuthErr('Connection error'); btn.disabled = false; btn.textContent = 'Log In'; }
+}
+
+async function doSignup() {
+  const name = document.getElementById('signup-name').value.trim();
+  const email = document.getElementById('signup-email').value.trim();
+  const pass = document.getElementById('signup-pass').value;
+  const btn = document.getElementById('signup-btn');
+  if (!email || !pass) return setAuthErr('Please enter email and password');
+  btn.disabled = true; btn.textContent = 'Creating account...';
+  try {
+    const r = await fetch('/api/auth/signup', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ email, password: pass, displayName: name })
+    });
+    const data = await r.json();
+    if (!r.ok) { setAuthErr(data.error); btn.disabled = false; btn.textContent = 'Create Account'; return; }
+    currentUser = data.user;
+    showApp();
+  } catch { setAuthErr('Connection error'); btn.disabled = false; btn.textContent = 'Create Account'; }
+}
+
+async function handleUserBtn() {
+  if (!currentUser) return;
+  if (confirm('Log out of PKMflip?')) {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    currentUser = null;
+    cards = [];
+    document.getElementById('auth-screen').classList.remove('hidden');
+    document.getElementById('app-wrap').style.display = 'none';
+    document.getElementById('fab').style.display = 'none';
+    document.getElementById('login-email').value = '';
+    document.getElementById('login-pass').value = '';
+    document.getElementById('auth-err').textContent = '';
+  }
+}
+
+function setAuthErr(msg) {
+  document.getElementById('auth-err').textContent = msg;
+}
+
+function showApp() {
+  document.getElementById('auth-screen').classList.add('hidden');
+  document.getElementById('app-wrap').style.display = 'block';
+  document.getElementById('fab').style.display = 'flex';
+  const initials = (currentUser.displayName || currentUser.email || '?')[0].toUpperCase();
+  document.getElementById('user-avatar').textContent = initials;
+  document.getElementById('user-name').textContent = currentUser.displayName || currentUser.email.split('@')[0];
+  loadCards().then(() => { renderOverview(); });
+}
+
 // ── INIT ──────────────────────────────────────────────────
 async function init() {
-  await Promise.all([loadCards(), loadRates()]);
-  renderOverview();
+  await loadRates();
+  // Check if already logged in via cookie
+  try {
+    const r = await fetch('/api/auth/me');
+    if (r.ok) {
+      const data = await r.json();
+      currentUser = data.user;
+      await loadCards();
+      renderOverview();
+      document.getElementById('auth-screen').classList.add('hidden');
+      document.getElementById('app-wrap').style.display = 'block';
+      const initials = (currentUser.displayName || currentUser.email || '?')[0].toUpperCase();
+      document.getElementById('user-avatar').textContent = initials;
+      document.getElementById('user-name').textContent = currentUser.displayName || currentUser.email.split('@')[0];
+    } else {
+      document.getElementById('auth-screen').classList.remove('hidden');
+      document.getElementById('app-wrap').style.display = 'none';
+      document.getElementById('fab').style.display = 'none';
+    }
+  } catch {
+    document.getElementById('auth-screen').classList.remove('hidden');
+    document.getElementById('app-wrap').style.display = 'none';
+    document.getElementById('fab').style.display = 'none';
+  }
   document.getElementById('loading').classList.add('hidden');
 }
 
