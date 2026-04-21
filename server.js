@@ -237,117 +237,124 @@ app.post('/api/scan', auth, async (req, res) => {
   const { imageBase64, mediaType } = req.body;
   if (!imageBase64 || !ANTHROPIC_API_KEY) return res.status(400).json({ error: 'Missing image or API key' });
   try {
+    // Step 1: identify card with Claude Vision
     const r = await fetch('https://api.anthropic.com/v1/messages', {
-      method:'POST',
-      headers:{'Content-Type':'application/json','x-api-key':ANTHROPIC_API_KEY,'anthropic-version':'2023-06-01'},
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({
-        model:'claude-opus-4-5', max_tokens:300,
-        messages:[{role:'user',content:[
-          {type:'image',source:{type:'base64',media_type:mediaType||'image/jpeg',data:imageBase64}},
-          {type:'text',text:'You are a Pokemon card expert. Carefully examine this card and read every detail precisely. 1) Read the exact Pokemon name printed at the top. 2) Read the exact card number printed at the bottom (e.g. 093/167 means number is 093). 3) Identify the art style: does the artwork bleed to the edges with no border (Illustration Rare or Special Illustration Rare), or does it have a standard frame? 4) Look at the set symbol in the bottom right corner. 5) If in a graded slab, read the grading company and grade number. Respond ONLY with valid JSON, no extra text: {"name":"exact Pokemon name","number":"card number with leading zeros e.g. 093","variant":"Illustration Rare, Special Illustration Rare, Full Art, Rainbow Rare, Alt Art, or Standard","grade":"e.g. PSA 10 or null","condition":"NM/LP/MP/HP if raw or null"}. If not a Pokemon card respond: {"name":null}.'}
+        model: 'claude-opus-4-5', max_tokens: 300,
+        messages: [{ role: 'user', content: [
+          { type: 'image', source: { type: 'base64', media_type: mediaType || 'image/jpeg', data: imageBase64 } },
+          { type: 'text', text: 'You are a Pokemon card expert. Examine this card carefully. Read: 1) The exact Pokemon name at the top. 2) The card number at the bottom e.g. 093 from 093/167. 3) Art style: does artwork bleed to edges with no border = Illustration Rare or Special Illustration Rare; standard framed art = Standard. 4) If in a graded slab, the company and grade. Respond ONLY with JSON: {"name":"Pokemon name","number":"number with leading zeros e.g. 093","variant":"Illustration Rare, Special Illustration Rare, Full Art, Rainbow Rare, Alt Art, or Standard","grade":"PSA 10 or null","condition":"NM/LP/MP/HP or null"}. If not a Pokemon card: {"name":null}.' }
         ]}]
       })
     });
     const data = await r.json();
-    const rawText = (data.content?.[0]?.text||'{}').replace(/```json|```/g,'').trim();
-    console.log('[SCAN] Claude raw response:', rawText);
+    const rawText = (data.content?.[0]?.text || '{}').replace(/```json|```/g, '').trim();
+    console.log('[SCAN] Vision response:', rawText);
     const parsed = JSON.parse(rawText);
-    console.log('[SCAN] Parsed:', JSON.stringify(parsed));
     if (!parsed.name) return res.json({ detected: false });
 
-    // Step 2: fetch TCG candidates, then ask Claude Vision to pick the one that visually matches
+    // Step 2: look up card in TCG API by name + number
     let verifiedSet = null;
     let image = null;
+    let tcgCards = [];
     try {
-      const numRaw = (parsed.number||'').replace(/\/.*/, '').trim();
-      // Try with number first, then name only as fallback
-      let tcgCards = [];
+      const numRaw = (parsed.number || '').replace(/\/.*/, '').trim();
       if (numRaw) {
         const q1 = `name:"${parsed.name}" number:${numRaw}`;
         const r1 = await fetch(`https://api.pokemontcg.io/v2/cards?q=${encodeURIComponent(q1)}&pageSize=20`);
         if (r1.ok) tcgCards = (await r1.json())?.data || [];
-        console.log('[SCAN] TCG query with number:', q1, '-> found:', tcgCards.length);
+        console.log('[SCAN] TCG by number:', q1, '->', tcgCards.length, 'found');
       }
       if (!tcgCards.length) {
         const q2 = `name:"${parsed.name}"`;
         const r2 = await fetch(`https://api.pokemontcg.io/v2/cards?q=${encodeURIComponent(q2)}&pageSize=20`);
         if (r2.ok) tcgCards = (await r2.json())?.data || [];
-        console.log('[SCAN] TCG fallback query:', q2, '-> found:', tcgCards.length);
+        console.log('[SCAN] TCG by name:', q2, '->', tcgCards.length, 'found');
       }
-      if (tcgCards.length === 1) {
-          // Only one match — use it directly
-          verifiedSet = tcgCards[0].set?.name || null;
-          image = tcgCards[0].images?.large || tcgCards[0].images?.small || null;
-        } else if (tcgCards.length > 1) {
-          // Multiple candidates — fetch their images and ask Claude to pick the best visual match
-          const candidates = tcgCards.slice(0, 5).map(c => ({
-            id: c.id,
-            setName: c.set?.name,
-            rarity: c.rarity,
-            imageUrl: c.images?.small || c.images?.large
-          })).filter(c => c.imageUrl);
+    } catch (e) { console.log('[SCAN] TCG fetch error:', e.message); }
 
-          console.log('[SCAN] Asking Claude to visually match from', candidates.length, 'candidates');
+    if (tcgCards.length === 1) {
+      verifiedSet = tcgCards[0].set?.name || null;
+      image = tcgCards[0].images?.large || tcgCards[0].images?.small || null;
+      console.log('[SCAN] Single TCG match:', verifiedSet, tcgCards[0].rarity);
+    } else if (tcgCards.length > 1) {
+      // Step 3: visual cross-reference — fetch candidate images and ask Claude to pick best match
+      const isIllustration = parsed.variant && /illustration|special/i.test(parsed.variant);
+      const candidates = tcgCards.slice(0, 5).map(c => ({
+        id: c.id, setName: c.set?.name, rarity: c.rarity,
+        imageUrl: c.images?.small || c.images?.large,
+        releaseDate: c.set?.releaseDate
+      })).filter(c => c.imageUrl);
 
-          // Fetch candidate images as base64 for Claude
-          const candidateImgs = await Promise.all(candidates.map(async c => {
-            try {
-              const r = await fetch(c.imageUrl);
-              if (!r.ok) return null;
-              const arrayBuf = await r.arrayBuffer();
-              return { ...c, b64: Buffer.from(arrayBuf).toString('base64') };
-            } catch { return null; }
-          }));
-          const validCandidates = candidateImgs.filter(Boolean);
+      // Fetch candidate images as base64
+      const candidateImgs = await Promise.all(candidates.map(async c => {
+        try {
+          const cr = await fetch(c.imageUrl);
+          if (!cr.ok) return null;
+          const arrayBuf = await cr.arrayBuffer();
+          return { ...c, b64: Buffer.from(arrayBuf).toString('base64') };
+        } catch { return null; }
+      }));
+      const valid = candidateImgs.filter(Boolean);
+      console.log('[SCAN] Visual match candidates:', valid.length);
 
-          if (validCandidates.length > 0) {
-            const matchContent = [
-              { type: 'text', text: `I scanned a Pokemon card and identified it as "${parsed.name}" number ${numRaw}, variant "${parsed.variant||'unknown'}". Below is the original scanned card followed by ${validCandidates.length} candidate images from the Pokemon TCG database. Compare the artwork, colors, background, and card layout of the scanned card against each candidate. Respond ONLY with JSON: {"bestMatchId": "the id of the candidate that best matches the scanned card visually", "confidence": "high/medium/low"}` },
-              { type: 'image', source: { type: 'base64', media_type: mediaType||'image/jpeg', data: imageBase64 } },
-              ...validCandidates.flatMap((c, i) => [
-                { type: 'text', text: `Candidate ${i+1} (id: ${c.id}, set: ${c.setName}, rarity: ${c.rarity}):` },
-                { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: c.b64 } }
-              ])
-            ];
-
-            const matchRes = await fetch('https://api.anthropic.com/v1/messages', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-              body: JSON.stringify({ model: 'claude-opus-4-5', max_tokens: 100, messages: [{ role: 'user', content: matchContent }] })
-            });
-            const matchData = await matchRes.json();
-            const matchText = (matchData.content?.[0]?.text||'{}').replace(/```json|```/g,'').trim();
-            console.log('[SCAN] Visual match response:', matchText);
-            const matchParsed = JSON.parse(matchText);
-            const bestMatch = validCandidates.find(c => c.id === matchParsed.bestMatchId) || validCandidates[0];
-            verifiedSet = bestMatch.setName;
-            image = tcgCards.find(c => c.id === bestMatch.id)?.images?.large || bestMatch.imageUrl;
-            console.log('[SCAN] Visual match picked:', bestMatch.id, bestMatch.setName, 'confidence:', matchParsed.confidence);
-          } else {
-            // Fallback if image fetching failed
-            const fallback = tcgCards.sort((a,b) => new Date(b.set?.releaseDate||0) - new Date(a.set?.releaseDate||0))[0];
-            verifiedSet = fallback.set?.name;
-            image = fallback.images?.large || fallback.images?.small;
-          }
+      if (valid.length > 0) {
+        try {
+          const matchContent = [
+            { type: 'text', text: `I scanned a Pokemon card: "${parsed.name}" number ${parsed.number}, variant "${parsed.variant || 'unknown'}". Here is the original scan followed by ${valid.length} TCG database candidates. Which candidate best matches the scanned card visually (same artwork colors, background, art style)? Respond ONLY with JSON: {"bestMatchId":"candidate id","confidence":"high/medium/low"}` },
+            { type: 'image', source: { type: 'base64', media_type: mediaType || 'image/jpeg', data: imageBase64 } },
+            ...valid.flatMap((c, i) => [
+              { type: 'text', text: `Candidate ${i + 1} id:${c.id} set:${c.setName} rarity:${c.rarity}:` },
+              { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: c.b64 } }
+            ])
+          ];
+          const mr = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+            body: JSON.stringify({ model: 'claude-opus-4-5', max_tokens: 100, messages: [{ role: 'user', content: matchContent }] })
+          });
+          const md = await mr.json();
+          const mt = (md.content?.[0]?.text || '{}').replace(/```json|```/g, '').trim();
+          console.log('[SCAN] Visual match result:', mt);
+          const mp = JSON.parse(mt);
+          const best = valid.find(c => c.id === mp.bestMatchId) || (isIllustration
+            ? valid.find(c => c.rarity && /illustration|special/i.test(c.rarity)) || valid[0]
+            : valid[0]);
+          const bestFull = tcgCards.find(c => c.id === best.id);
+          verifiedSet = best.setName;
+          image = bestFull?.images?.large || best.imageUrl;
+          console.log('[SCAN] Picked:', best.id, best.setName, 'confidence:', mp.confidence);
+        } catch (e) {
+          console.log('[SCAN] Visual match error:', e.message);
+          // Fallback: prefer illustration rare or most recent
+          const fallback = (isIllustration
+            ? tcgCards.find(c => c.rarity && /illustration|special/i.test(c.rarity))
+            : null) || tcgCards.sort((a, b) => new Date(b.set?.releaseDate || 0) - new Date(a.set?.releaseDate || 0))[0];
+          verifiedSet = fallback?.set?.name || null;
+          image = fallback?.images?.large || fallback?.images?.small || null;
         }
       }
-    } catch(e) { console.log('[SCAN] TCG visual match error:', e.message); }
+    }
 
-    const variant = parsed.variant ? ` ${parsed.variant}` : '';
+    // Build display name and eBay query
+    const variant = parsed.variant && parsed.variant !== 'Standard' ? ` ${parsed.variant}` : '';
     const displayName = `${parsed.name}${variant}`.trim();
     const fullName = [displayName, parsed.grade].filter(Boolean).join(' ');
-
-    // Build eBay query using verified set name (not Claude's guess)
     const ebayNumber = parsed.number ? parsed.number.replace(/^0+/, '') : null;
-    const ebayParts = [parsed.name, ebayNumber, parsed.variant, verifiedSet, parsed.grade].filter(Boolean);
-    const ebayName = ebayParts.join(' ');
-    console.log('[SCAN] eBay query:', ebayName);
+    const ebayQuery = [parsed.name, ebayNumber, parsed.variant !== 'Standard' ? parsed.variant : null, verifiedSet, parsed.grade].filter(Boolean).join(' ');
+    console.log('[SCAN] eBay query:', ebayQuery);
 
-    const marketPrice = await getMarketPrice(ebayName);
-    console.log('[SCAN] marketPrice:', marketPrice, 'image:', image ? 'found' : 'null');
-    res.json({ detected:true, name:fullName, grade:parsed.grade, condition:parsed.condition, marketPrice, image });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+    const marketPrice = await getMarketPrice(ebayQuery);
+    console.log('[SCAN] marketPrice:', marketPrice, '| image:', image ? 'found' : 'null');
+    res.json({ detected: true, name: fullName, grade: parsed.grade, condition: parsed.condition, marketPrice, image });
+  } catch (e) {
+    console.log('[SCAN] Fatal error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
 });
+
 
 app.post('/api/scan-lot', auth, async (req, res) => {
   const { imageBase64, mediaType } = req.body;
