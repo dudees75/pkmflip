@@ -375,15 +375,33 @@ app.post('/api/scan', auth, async (req, res) => {
       }
     }
 
-    // Build display name and eBay query
+    // Build display name
     const variant = parsed.variant && parsed.variant !== 'Standard' ? ` ${parsed.variant}` : '';
     const displayName = `${parsed.name}${variant}`.trim();
     const fullName = [displayName, parsed.grade].filter(Boolean).join(' ');
     const ebayNumber = parsed.number ? parsed.number.replace(/^0+/, '') : null;
-    const ebayQuery = [parsed.name, ebayNumber, parsed.variant !== 'Standard' ? parsed.variant : null, verifiedSet, parsed.grade].filter(Boolean).join(' ');
+
+    // Build eBay query — start specific, fall back to simpler if no results
+    // Skip promo/set name for promos as they rarely appear in listings
+    const isPromo = verifiedSet && /promo/i.test(verifiedSet);
+    const variantForEbay = parsed.variant && parsed.variant !== 'Standard' ? parsed.variant : null;
+    const setForEbay = isPromo ? null : verifiedSet;
+    const ebayQuery = [parsed.name, ebayNumber, variantForEbay, setForEbay, parsed.grade].filter(Boolean).join(' ');
     console.log('[SCAN] eBay query:', ebayQuery);
 
-    const marketPrice = await getMarketPrice(ebayQuery);
+    let marketPrice = await getMarketPrice(ebayQuery);
+    // If no results, retry with simpler query (name + number only)
+    if (!marketPrice && ebayNumber) {
+      const simpleQuery = [parsed.name, ebayNumber, parsed.grade].filter(Boolean).join(' ');
+      console.log('[SCAN] Retrying with simple query:', simpleQuery);
+      marketPrice = await getMarketPrice(simpleQuery);
+    }
+    // Last resort: just name
+    if (!marketPrice) {
+      const nameOnly = [parsed.name, parsed.grade].filter(Boolean).join(' ');
+      console.log('[SCAN] Retrying with name only:', nameOnly);
+      marketPrice = await getMarketPrice(nameOnly);
+    }
     console.log('[SCAN] marketPrice:', marketPrice, '| image:', image ? 'found' : 'null');
     res.json({ detected: true, name: fullName, grade: parsed.grade, condition: parsed.condition, marketPrice, image });
   } catch (e) {
