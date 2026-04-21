@@ -381,12 +381,8 @@ app.post('/api/scan', auth, async (req, res) => {
     const fullName = [displayName, parsed.grade].filter(Boolean).join(' ');
     const ebayNumber = parsed.number ? parsed.number.replace(/^0+/, '') : null;
 
-    // Build eBay query — start specific, fall back to simpler if no results
-    // Skip promo/set name for promos as they rarely appear in listings
-    const isPromo = verifiedSet && /promo/i.test(verifiedSet);
-    const variantForEbay = parsed.variant && parsed.variant !== 'Standard' ? parsed.variant : null;
-    const setForEbay = isPromo ? null : verifiedSet;
-    const ebayQuery = [parsed.name, ebayNumber, variantForEbay, setForEbay, parsed.grade].filter(Boolean).join(' ');
+    // eBay sellers list as: card name + number + set name (no variant language)
+    const ebayQuery = [parsed.name, ebayNumber, verifiedSet, parsed.grade].filter(Boolean).join(' ');
     console.log('[SCAN] eBay query:', ebayQuery);
 
     let marketPrice = await getMarketPrice(ebayQuery);
