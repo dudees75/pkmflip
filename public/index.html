@@ -721,8 +721,11 @@ async function saveCard() {
   const cost = parseFloat(document.getElementById('in-cost').value);
   const mkt = parseFloat(document.getElementById('in-mkt').value) || null;
   if (!name || isNaN(cost) || cost <= 0) { alert('Please enter a card name and buy cost.'); return; }
+  // Use the image already displayed in the scanner box if available
+  const scImg = document.getElementById('sc-img');
+  const scannedImage = scImg && scImg.src && !scImg.src.endsWith('/') ? scImg.src : null;
   const imgKey = Object.keys(FALLBACK_IMGS).find(k => name.toLowerCase().includes(k));
-  const image = imgKey ? FALLBACK_IMGS[imgKey] : null;
+  const image = scannedImage || (imgKey ? FALLBACK_IMGS[imgKey] : null);
   const card = await apiPost('/api/cards', { name, cost, marketPrice: mkt, image });
   cards.push(card);
   closeAdd();
